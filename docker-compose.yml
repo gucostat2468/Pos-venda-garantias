@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/garantias.db:/app/garantias.db
+      - ./backend/uploads:/app/uploads
+      - ./backend/compiled:/app/compiled
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+networks:
+  default:
+    name: garantias-network

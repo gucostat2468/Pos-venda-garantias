@@ -1,0 +1,561 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { casosAPI } from '../api'
+import { useAuth } from '../contexts/AuthContext'
+import useMediaQuery from '../hooks/useMediaQuery'
+
+const DOCS_POR_TIPO = {
+  Peca: [
+    {
+      label: 'Remessa (Documento de separação dos itens no estoque)',
+      obrigatorio: true,
+      aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+    },
+    {
+      label: 'Nota Fiscal de Remessa para Garantia',
+      obrigatorio: false,
+      aliases: ['Nota Fiscal de Remessa para Garantia', 'NF Remessa'],
+    },
+    {
+      label: 'Relatório Técnico',
+      obrigatorio: false,
+      aliases: ['Relatório Técnico', 'Relatorio Tecnico (OS)'],
+    },
+  ],
+  Bateria: [
+    {
+      label: 'Remessa (Documento de separação dos itens no estoque)',
+      obrigatorio: true,
+      aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+    },
+    {
+      label: 'Nota Fiscal de Remessa para Garantia',
+      obrigatorio: false,
+      aliases: ['Nota Fiscal de Remessa para Garantia', 'NF Remessa'],
+    },
+    {
+      label: 'Relatório Técnico',
+      obrigatorio: false,
+      aliases: ['Relatório Técnico', 'Relatorio Tecnico (OS)'],
+    },
+  ],
+}
+
+const FLOW_STEPS = [
+  {
+    id: 1,
+    title: 'Time Oficina',
+    text: 'Abre o caso e anexa Remessa, NF de remessa (opcional) e Relatório técnico (opcional)',
+  },
+  {
+    id: 2,
+    title: 'Gerente Pós-venda',
+    text: 'Vanier Afonso revisa e assina digitalmente o dossiê',
+  },
+  {
+    id: 3,
+    title: 'Diretor Comercial',
+    text: 'Marcus Lawder realiza a segunda assinatura digital',
+  },
+  {
+    id: 4,
+    title: 'Impressão em 3 Vias',
+    text: 'Time Oficina imprime: Financeiro, Estoque e Controle Interno',
+  },
+]
+
+const TABLE_FILTERS = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'pecas', label: 'Peças' },
+  { key: 'baterias', label: 'Baterias' },
+  { key: 'pendentes', label: 'Pendentes' },
+]
+
+const PENDING_STATUSES = [
+  'Aguardando Documentos',
+  'Aguardando Aprovação Pós-Venda',
+  'Aguardando Aprovação Diretoria',
+  'Aguardando Impressão Oficina',
+  'Aguardando Vídeo Descarte',
+]
+
+const STATUS_VIEW = {
+  'Aguardando Documentos': { label: 'Aguardando docs', tone: 'warning' },
+  'Aguardando Aprovação Pós-Venda': { label: 'Aprovação Pós-venda', tone: 'blue' },
+  'Aguardando Aprovação Diretoria': { label: 'Aprovação diretor comercial', tone: 'warning' },
+  'Aguardando Impressão Oficina': { label: 'Aguardando impressão', tone: 'success' },
+  'Aguardando Vídeo Descarte': { label: 'Vídeo descarte', tone: 'blue' },
+  Finalizado: { label: 'Finalizado', tone: 'success' },
+  Reprovado: { label: 'Reprovado', tone: 'danger' },
+}
+
+function formatCaseCode(caso) {
+  if (!caso) {
+    return 'SEM-CASO'
+  }
+  return caso.dji_case_id || `CAS-${String(caso.id).padStart(6, '0')}`
+}
+
+function formatDate(dateString) {
+  if (!dateString) {
+    return '-'
+  }
+  const value = dateString.includes('T') ? dateString : `${dateString}T00:00:00`
+  return new Date(value).toLocaleDateString('pt-BR')
+}
+
+function formatDateTime(dateString) {
+  if (!dateString) {
+    return '-'
+  }
+  return new Date(dateString).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function extensionTag(filename) {
+  if (!filename) {
+    return 'DOC'
+  }
+  const ext = filename.split('.').pop()
+  if (!ext || ext.length > 5) {
+    return 'DOC'
+  }
+  return ext.toUpperCase()
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+function compiledFilename(pathValue) {
+  if (!pathValue) {
+    return ''
+  }
+  const normalized = String(pathValue).replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  return parts[parts.length - 1] || ''
+}
+
+export default function Dashboard() {
+  const isMobile = useMediaQuery('(max-width: 760px)')
+  const { podeAssinar } = useAuth()
+  const [stats, setStats] = useState(null)
+  const [casos, setCasos] = useState([])
+  const [casoDestaque, setCasoDestaque] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [tableFilter, setTableFilter] = useState('todos')
+
+  useEffect(() => {
+    let mounted = true
+
+    const load = async () => {
+      setLoading(true)
+      try {
+        const [statsRes, casosRes] = await Promise.all([
+          casosAPI.stats(),
+          casosAPI.listar(),
+        ])
+
+        const lista = Array.isArray(casosRes.data) ? casosRes.data : []
+
+        if (mounted) {
+          setStats(statsRes.data || {})
+          setCasos(lista.slice(0, 12))
+        }
+
+        if (lista.length > 0) {
+          try {
+            const detailRes = await casosAPI.obter(lista[0].id)
+            if (mounted) {
+              setCasoDestaque(detailRes.data)
+            }
+          } catch {
+            if (mounted) {
+              setCasoDestaque(lista[0])
+            }
+          }
+        } else if (mounted) {
+          setCasoDestaque(null)
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const pendPosVenda = casos.filter((caso) => caso.status === 'Aguardando Aprovação Pós-Venda').length
+  const pendDiretoria = casos.filter((caso) => caso.status === 'Aguardando Aprovação Diretoria').length
+  const casoAtual = casoDestaque || casos[0] || null
+  const codigoCasoAtual = formatCaseCode(casoAtual)
+
+  const documentosObrigatorios = DOCS_POR_TIPO[casoAtual?.tipo_processo] || DOCS_POR_TIPO.Peca
+  const docsPreview = documentosObrigatorios.map((docCfg) => {
+    const aliasesNorm = (docCfg.aliases || []).map((alias) => normalizeText(alias))
+    const realDoc = (casoAtual?.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
+    if (realDoc) {
+      return {
+        tipo: docCfg.label,
+        nome: realDoc.nome_arquivo,
+        enviado: true,
+        obrigatorio: docCfg.obrigatorio,
+      }
+    }
+    return {
+      tipo: docCfg.label,
+      nome: '',
+      enviado: false,
+      obrigatorio: docCfg.obrigatorio,
+    }
+  })
+
+  const assinaturaPos = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Pos-venda')
+  const assinaturaDir = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Diretoria')
+
+  const statusPos = assinaturaPos
+    ? assinaturaPos.status_decisao
+    : casoAtual?.status === 'Aguardando Aprovação Pós-Venda'
+      ? 'Aguardando'
+      : 'Pendente'
+
+  const statusDir = assinaturaDir
+    ? assinaturaDir.status_decisao
+    : casoAtual?.status === 'Aguardando Aprovação Diretoria'
+      ? 'Aguardando'
+      : 'Pendente'
+
+  const canSign = casoAtual ? podeAssinar(casoAtual) : false
+  const hasCompiledPdf = Boolean(casoAtual?.id && casoAtual?.link_pdf_compilado)
+  const pdfName = compiledFilename(casoAtual?.link_pdf_compilado)
+
+  const assinaturaPosMeta = assinaturaPos
+    ? `${assinaturaPos.usuario?.nome || 'Responsável'} em ${formatDateTime(assinaturaPos.data_assinatura)}`
+    : casoAtual?.status === 'Aguardando Aprovação Pós-Venda'
+      ? 'Aguardando assinatura do gerente de pós-venda.'
+      : casoAtual?.status === 'Aguardando Documentos'
+        ? 'Etapa ainda não iniciada.'
+        : casoAtual?.status === 'Reprovado'
+          ? 'Fluxo encerrado por reprovação.'
+          : 'Etapa concluída.'
+
+  const assinaturaDirMeta = assinaturaDir
+    ? `${assinaturaDir.usuario?.nome || 'Responsável'} em ${formatDateTime(assinaturaDir.data_assinatura)}`
+    : casoAtual?.status === 'Aguardando Aprovação Diretoria'
+      ? 'Aguardando assinatura do diretor comercial.'
+      : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda'].includes(casoAtual?.status || '')
+        ? 'Etapa ainda não liberada.'
+        : casoAtual?.status === 'Reprovado'
+          ? 'Fluxo encerrado por reprovação.'
+          : 'Etapa concluída.'
+
+  const tableRows = useMemo(() => {
+    const filtered = casos.filter((caso) => {
+      if (tableFilter === 'pecas') return caso.tipo_processo === 'Peca'
+      if (tableFilter === 'baterias') return caso.tipo_processo === 'Bateria'
+      if (tableFilter === 'pendentes') return PENDING_STATUSES.includes(caso.status)
+      return true
+    })
+    return filtered.slice(0, 8)
+  }, [casos, tableFilter])
+
+  const cards = [
+    {
+      label: 'Total de Casos',
+      value: stats?.total_casos ?? 0,
+      detail: `${casos.length} exibidos na tela inicial`,
+      tone: 'blue',
+    },
+    {
+      label: 'Pendentes de Aprovação',
+      value: stats?.aguardando_aprovacao ?? 0,
+      detail: `${pendPosVenda} Pós-venda / ${pendDiretoria} Diretor Comercial`,
+      tone: 'amber',
+    },
+    {
+      label: 'Aprovados',
+      value: stats?.finalizados ?? 0,
+      detail: `${stats?.rebate_aguardando_apuracao ?? 0} rebate aguardando apuração`,
+      tone: 'green',
+    },
+    {
+      label: 'Reprovados',
+      value: stats?.reprovados ?? 0,
+      detail: 'Casos marcados para revisão',
+      tone: 'red',
+    },
+  ]
+
+  return (
+    <div className="dash-page">
+      {loading ? (
+        <div className="dp-panel dash-loading">Carregando dashboard...</div>
+      ) : (
+        <>
+          <section className="dash-kpi-grid">
+            {cards.map((card) => (
+              <article key={card.label} className={`dash-kpi-card tone-${card.tone}`}>
+                <p className="dash-kpi-label">{card.label}</p>
+                <h3 className="dash-kpi-value">{card.value}</h3>
+                <p className="dash-kpi-detail">{card.detail}</p>
+              </article>
+            ))}
+          </section>
+
+          <section className="dp-panel">
+            <div className="dp-panel-head">
+              <h2>Fluxo do Processo</h2>
+              <span className="dp-chip-subtle">Sequencial</span>
+            </div>
+
+            <div className="dash-flow-row">
+              {FLOW_STEPS.map((step, index) => (
+                <React.Fragment key={step.id}>
+                  <article className="dash-flow-step">
+                    <div className="dash-flow-index">{step.id}</div>
+                    <h3>{step.title}</h3>
+                    <p>{step.text}</p>
+                  </article>
+                  {index < FLOW_STEPS.length - 1 && <div className="dash-flow-arrow">{'>'}</div>}
+                </React.Fragment>
+              ))}
+            </div>
+          </section>
+
+          <section className="dp-panel">
+            <div className="dp-panel-head">
+              <h2>Detalhes do Caso</h2>
+              <span className="dp-chip-case">{codigoCasoAtual}</span>
+            </div>
+
+            <div className="dash-details-grid">
+              <article className="dash-module-card">
+                <header className="dash-module-head tone-blue">
+                  <h3>Upload de Documentos</h3>
+                  <span>Etapa 1</span>
+                </header>
+
+                <div className="dash-upload-note">
+                  <p>Envio de arquivos disponível na tela completa do caso.</p>
+                  {casoAtual?.id ? (
+                    <Link className="dash-open-case-btn" to={`/casos/${casoAtual.id}`}>
+                      Abrir caso para anexar documentos
+                    </Link>
+                  ) : (
+                    <span className="dash-open-case-btn is-disabled">Nenhum caso selecionado</span>
+                  )}
+                </div>
+
+                <div className="dash-doc-list">
+                  {docsPreview.map((doc) => (
+                    <div key={doc.tipo} className="dash-doc-row">
+                      <div className={`dash-doc-ext ${doc.enviado ? 'is-sent' : ''}`}>
+                        {extensionTag(doc.nome)}
+                      </div>
+                      <div className="dash-doc-meta">
+                        <div className="dash-doc-name">{doc.nome || 'Não enviado'}</div>
+                        <div className="dash-doc-type">
+                          {doc.tipo} {doc.obrigatorio ? '(Obrigatório)' : '(Opcional)'}
+                        </div>
+                      </div>
+                      <span className={`dash-doc-state ${doc.enviado ? 'is-sent' : 'is-pending'}`}>
+                        {doc.enviado ? 'Enviado' : 'Pendente'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <div className="dash-right-stack">
+                <article className="dash-module-card">
+                  <header className="dash-module-head tone-green">
+                    <h3>Assinatura e Aprovação</h3>
+                    <span>Etapas 2 a 4</span>
+                  </header>
+
+                  <div className="dash-sign-card">
+                    <div className="dash-sign-title">1ª Assinatura - Vanier Afonso (Gerente de Pós-venda)</div>
+                    <div className="dash-sign-meta">{assinaturaPosMeta}</div>
+                    <span className={`dash-sign-badge state-${statusPos.toLowerCase()}`}>
+                      {statusPos}
+                    </span>
+                  </div>
+
+                  <div className="dash-sign-card">
+                    <div className="dash-sign-title">2ª Assinatura - Marcus Lawder (Diretor Comercial)</div>
+                    <div className="dash-sign-meta">{assinaturaDirMeta}</div>
+                    <span className={`dash-sign-badge state-${statusDir.toLowerCase()}`}>
+                      {statusDir}
+                    </span>
+                  </div>
+
+                  {canSign && casoAtual && (
+                    <div className="dash-sign-actions">
+                      <Link className="dash-approve-btn" to={`/casos/${casoAtual.id}`}>
+                        Assinar e Aprovar
+                      </Link>
+                      <Link className="dash-reject-btn" to={`/casos/${casoAtual.id}`}>
+                        Reprovar
+                      </Link>
+                    </div>
+                  )}
+
+                  {casoAtual?.status === 'Aguardando Impressão Oficina' && (
+                    <div className="dash-print-note">
+                      <div className="dash-print-title">Impressão em 3 vias pela oficina:</div>
+                      <div>1ª via: Financeiro</div>
+                      <div>2ª via: Estoque</div>
+                      <div>3ª via: Controle da Oficina</div>
+                    </div>
+                  )}
+                </article>
+
+                <article className="dash-module-card">
+                  <h3 className="dash-dossie-title">Dossiê Compilado (PDF Único)</h3>
+                  <div className="dash-dossie-box">
+                    <div className="dash-dossie-icon">DOC</div>
+                    <div className="dash-dossie-name">{hasCompiledPdf ? (pdfName || 'Documento compilado') : 'PDF ainda indisponível'}</div>
+                    <div className="dash-dossie-meta">
+                      {hasCompiledPdf
+                        ? `${casoAtual?.documentos?.length || 0} documentos consolidados`
+                        : 'Gerado automaticamente após as duas assinaturas'}
+                    </div>
+                    {hasCompiledPdf ? (
+                      <a className="dash-download-btn" href={casosAPI.downloadPdf(casoAtual.id)}>
+                        Download PDF
+                      </a>
+                    ) : (
+                      <button className="dash-download-btn is-disabled" type="button" disabled>
+                        PDF indisponível
+                      </button>
+                    )}
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section className="dp-panel">
+            <div className="dp-panel-head panel-space">
+              <h2>Todos os Casos de Garantia</h2>
+              <div className="dash-filter-chips">
+                {TABLE_FILTERS.map((chip) => (
+                  <button
+                    key={chip.key}
+                    className={`dash-filter-chip ${tableFilter === chip.key ? 'is-active' : ''}`}
+                    onClick={() => setTableFilter(chip.key)}
+                    type="button"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="dash-table-wrap">
+              {isMobile ? (
+                <div className="dash-mobile-list">
+                  {tableRows.length === 0 ? (
+                    <div className="dash-empty-cell">Nenhum caso encontrado para este filtro.</div>
+                  ) : (
+                    tableRows.map((caso) => {
+                      const statusView = STATUS_VIEW[caso.status] || { label: caso.status || '-', tone: 'neutral' }
+                      return (
+                        <article key={caso.id} className="dash-mobile-card">
+                          <div className="dash-mobile-head">
+                            <strong>{formatCaseCode(caso)}</strong>
+                            <span className={`dash-status-pill tone-${statusView.tone}`}>
+                              {statusView.label}
+                            </span>
+                          </div>
+                          <div className="dash-mobile-line"><span>Cliente</span>{caso.cliente?.razao_social || '-'}</div>
+                          <div className="dash-mobile-line"><span>Produto</span>{caso.produto_modelo || caso.produto_nome || '-'}</div>
+                          <div className="dash-mobile-line"><span>Data</span>{formatDate(caso.data_entrada)}</div>
+                          <div className="dash-mobile-foot">
+                            <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
+                              {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}
+                            </span>
+                            <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
+                              Ver Caso
+                            </Link>
+                          </div>
+                        </article>
+                      )
+                    })
+                  )}
+                </div>
+              ) : (
+                <table className="dash-table">
+                  <thead>
+                    <tr>
+                      <th>ID do Caso DJI</th>
+                      <th>Cliente</th>
+                      <th>Tipo</th>
+                      <th>Produto</th>
+                      <th>Data Entrada</th>
+                      <th>Status</th>
+                      <th>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="dash-empty-cell">
+                          Nenhum caso encontrado para este filtro.
+                        </td>
+                      </tr>
+                    ) : (
+                      tableRows.map((caso) => {
+                        const statusView = STATUS_VIEW[caso.status] || { label: caso.status || '-', tone: 'neutral' }
+                        return (
+                          <tr key={caso.id}>
+                            <td>{formatCaseCode(caso)}</td>
+                            <td>{caso.cliente?.razao_social || '-'}</td>
+                            <td>
+                              <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
+                                {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}
+                              </span>
+                            </td>
+                            <td>{caso.produto_modelo || caso.produto_nome || '-'}</td>
+                            <td>{formatDate(caso.data_entrada)}</td>
+                            <td>
+                              <span className={`dash-status-pill tone-${statusView.tone}`}>
+                                {statusView.label}
+                              </span>
+                            </td>
+                            <td>
+                              <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
+                                Ver Caso
+                              </Link>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  )
+}

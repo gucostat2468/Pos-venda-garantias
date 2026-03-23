@@ -1,0 +1,475 @@
+{
+  "version": 1,
+  "created_at_utc": "2026-03-18T12:29:28+00:00",
+  "updated_at_utc": "2026-03-18T12:30:00+00:00",
+  "imports": [
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Abril 2025.xlsx",
+      "stored_relative_path": "Abril 2025.xlsx",
+      "size_bytes": 47981,
+      "sha256": "4e1c3ce2c401f6036e647aa7d288055b136c809f90839e327d62bfff616e8cdd",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Agosto 2024.xlsx",
+      "stored_relative_path": "Agosto 2024.xlsx",
+      "size_bytes": 23904,
+      "sha256": "3ea55ba0f031f2f686ef206e38e21791013186521517f3641dc12ee49fe123a7",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Agosto 2025.xlsx",
+      "stored_relative_path": "Agosto 2025.xlsx",
+      "size_bytes": 44174,
+      "sha256": "e4afffcf549fbaeb349a841f0fbf7260590ab8bf3accbaafff2c5cd506d36c09",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2023.xlsx",
+      "stored_relative_path": "Dezembro 2023.xlsx",
+      "size_bytes": 20103,
+      "sha256": "dd656cb80a30c3b808089c28ebc34669e37d3342fb3f5f6c1ddd2362c17307d4",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2024.xlsx",
+      "stored_relative_path": "Dezembro 2024.xlsx",
+      "size_bytes": 42045,
+      "sha256": "a6fbd267654b388a7307db5dddae27a8c3da95c80665e10964f438a494c71292",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2025.xlsx",
+      "stored_relative_path": "Dezembro 2025.xlsx",
+      "size_bytes": 65934,
+      "sha256": "ae2a38a9a5351a4f8b7451b433ee6131708f1169fe642cfa0dc96aa027ef27cd",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Fevereiro 2024.xlsx",
+      "stored_relative_path": "Fevereiro 2024.xlsx",
+      "size_bytes": 20191,
+      "sha256": "b331c3d38f2a80f0c1bab8e57a5a010407d35ed22ff2c2308d4314ba703b03b4",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Fevereiro 2025.xlsx",
+      "stored_relative_path": "Fevereiro 2025.xlsx",
+      "size_bytes": 47309,
+      "sha256": "81f273ca8497371cca8f18388dd10389785bde6cfa35023bb8b4102317ea18dc",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2024.xlsx",
+      "stored_relative_path": "Janeiro 2024.xlsx",
+      "size_bytes": 20541,
+      "sha256": "868d3896aeba2bc086bc4b8db5f51f722c6fc7f85bab3a05367b8da2cc553208",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2025.xlsx",
+      "stored_relative_path": "Janeiro 2025.xlsx",
+      "size_bytes": 40622,
+      "sha256": "792d8fb43dd67dfa30b433b5d48e1684c398d5c4d274b08b53cb36f3765ad9b7",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2026.xlsx",
+      "stored_relative_path": "Janeiro 2026.xlsx",
+      "size_bytes": 54636,
+      "sha256": "da37fbd69e34291c963996d9813d70935357ba83455c819f45a6711f8180ccee",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Julho 2024.xlsx",
+      "stored_relative_path": "Julho 2024.xlsx",
+      "size_bytes": 23934,
+      "sha256": "0ee6c9f782cbfb79f8e378cc6f2b60a06992d0473c59375fff3563baa5a11832",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Julho 2025.xlsx",
+      "stored_relative_path": "Julho 2025.xlsx",
+      "size_bytes": 48415,
+      "sha256": "11be47ac197392f273caa35af917780ee2a1be5a2fb91afde88ec19421ed42ba",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Junho 2024.xlsx",
+      "stored_relative_path": "Junho 2024.xlsx",
+      "size_bytes": 25382,
+      "sha256": "ff960d5fb0a504da1ddbb5fe1ef5a7e5d519af1f6b17245df5f0579ad9a4b8c1",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Junho 2025.xlsx",
+      "stored_relative_path": "Junho 2025.xlsx",
+      "size_bytes": 57618,
+      "sha256": "6558d7653ff78bb7e1e1f5f50b31cc6c81e3944ad6082c7287b453936a3326d6",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Maio 2024.xlsx",
+      "stored_relative_path": "Maio 2024.xlsx",
+      "size_bytes": 25754,
+      "sha256": "fc61164bacb2e280966350298fac8f16a5441c0280c173f7f6473758fd1059da",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Maio 2025.xlsx",
+      "stored_relative_path": "Maio 2025.xlsx",
+      "size_bytes": 55909,
+      "sha256": "f96874427539862c9d5e20d734c45f446f4d2f1502707b754401f0243c3cb6d5",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Março 2024.xlsx",
+      "stored_relative_path": "Março 2024.xlsx",
+      "size_bytes": 20420,
+      "sha256": "f8c8fdae70ceb76ef4406dd8d5238a502c3252217d5cf42291d55e13dd53315a",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Março 2025.xlsx",
+      "stored_relative_path": "Março 2025.xlsx",
+      "size_bytes": 44393,
+      "sha256": "03eb143fb8f6503c2651ec726454f02397b28f4e7373cddc69e19e95afbb0421",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2023.xlsx",
+      "stored_relative_path": "Novembro 2023.xlsx",
+      "size_bytes": 20259,
+      "sha256": "95ba58896fbf974a12b0cd85b0794b160b7a998fb9886e1a82225d563661e2b7",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2024.xlsx",
+      "stored_relative_path": "Novembro 2024.xlsx",
+      "size_bytes": 29516,
+      "sha256": "bc98d156de4afa9b32a368735e82092d8f621ca7d04d21e6ec53dd42138a328a",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2025.xlsx",
+      "stored_relative_path": "Novembro 2025.xlsx",
+      "size_bytes": 45540,
+      "sha256": "37f4f7ea756aca093767a1b68c62f7e73b7b71aa98d2f54bdf98b90f3418b493",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Outubro 2024.xlsx",
+      "stored_relative_path": "Outubro 2024.xlsx",
+      "size_bytes": 25426,
+      "sha256": "ee36fd0cdc0978b8707c11cf79cba04c07bbb2a226e43d1dda2414de6e2751e4",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Outubro 2025.xlsx",
+      "stored_relative_path": "Outubro 2025.xlsx",
+      "size_bytes": 58035,
+      "sha256": "0f915f66e59b2daf7bd7dacb14744c4a3080261cb6c873bdd46987fa8ad4c90a",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Setembro 2024.xlsx",
+      "stored_relative_path": "Setembro 2024.xlsx",
+      "size_bytes": 24732,
+      "sha256": "4605d665df3be9245352170104c4acf1d4e8a4d33b3519a67b8d3bd5071845c5",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:29:28+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Setembro 2025.xlsx",
+      "stored_relative_path": "Setembro 2025.xlsx",
+      "size_bytes": 43893,
+      "sha256": "e2ba9827e3c46f411bf045e117d0d2de940bd809d64d02a5e3e307cc9db75d1f",
+      "status": "imported_new"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Abril 2025.xlsx",
+      "stored_relative_path": "Abril 2025.xlsx",
+      "size_bytes": 47981,
+      "sha256": "4e1c3ce2c401f6036e647aa7d288055b136c809f90839e327d62bfff616e8cdd",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Agosto 2024.xlsx",
+      "stored_relative_path": "Agosto 2024.xlsx",
+      "size_bytes": 23904,
+      "sha256": "3ea55ba0f031f2f686ef206e38e21791013186521517f3641dc12ee49fe123a7",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Agosto 2025.xlsx",
+      "stored_relative_path": "Agosto 2025.xlsx",
+      "size_bytes": 44174,
+      "sha256": "e4afffcf549fbaeb349a841f0fbf7260590ab8bf3accbaafff2c5cd506d36c09",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2023.xlsx",
+      "stored_relative_path": "Dezembro 2023.xlsx",
+      "size_bytes": 20103,
+      "sha256": "dd656cb80a30c3b808089c28ebc34669e37d3342fb3f5f6c1ddd2362c17307d4",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2024.xlsx",
+      "stored_relative_path": "Dezembro 2024.xlsx",
+      "size_bytes": 42045,
+      "sha256": "a6fbd267654b388a7307db5dddae27a8c3da95c80665e10964f438a494c71292",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Dezembro 2025.xlsx",
+      "stored_relative_path": "Dezembro 2025.xlsx",
+      "size_bytes": 65934,
+      "sha256": "ae2a38a9a5351a4f8b7451b433ee6131708f1169fe642cfa0dc96aa027ef27cd",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Fevereiro 2024.xlsx",
+      "stored_relative_path": "Fevereiro 2024.xlsx",
+      "size_bytes": 20191,
+      "sha256": "b331c3d38f2a80f0c1bab8e57a5a010407d35ed22ff2c2308d4314ba703b03b4",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Fevereiro 2025.xlsx",
+      "stored_relative_path": "Fevereiro 2025.xlsx",
+      "size_bytes": 47309,
+      "sha256": "81f273ca8497371cca8f18388dd10389785bde6cfa35023bb8b4102317ea18dc",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2024.xlsx",
+      "stored_relative_path": "Janeiro 2024.xlsx",
+      "size_bytes": 20541,
+      "sha256": "868d3896aeba2bc086bc4b8db5f51f722c6fc7f85bab3a05367b8da2cc553208",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2025.xlsx",
+      "stored_relative_path": "Janeiro 2025.xlsx",
+      "size_bytes": 40622,
+      "sha256": "792d8fb43dd67dfa30b433b5d48e1684c398d5c4d274b08b53cb36f3765ad9b7",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Janeiro 2026.xlsx",
+      "stored_relative_path": "Janeiro 2026.xlsx",
+      "size_bytes": 54636,
+      "sha256": "da37fbd69e34291c963996d9813d70935357ba83455c819f45a6711f8180ccee",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Julho 2024.xlsx",
+      "stored_relative_path": "Julho 2024.xlsx",
+      "size_bytes": 23934,
+      "sha256": "0ee6c9f782cbfb79f8e378cc6f2b60a06992d0473c59375fff3563baa5a11832",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Julho 2025.xlsx",
+      "stored_relative_path": "Julho 2025.xlsx",
+      "size_bytes": 48415,
+      "sha256": "11be47ac197392f273caa35af917780ee2a1be5a2fb91afde88ec19421ed42ba",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Junho 2024.xlsx",
+      "stored_relative_path": "Junho 2024.xlsx",
+      "size_bytes": 25382,
+      "sha256": "ff960d5fb0a504da1ddbb5fe1ef5a7e5d519af1f6b17245df5f0579ad9a4b8c1",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Junho 2025.xlsx",
+      "stored_relative_path": "Junho 2025.xlsx",
+      "size_bytes": 57618,
+      "sha256": "6558d7653ff78bb7e1e1f5f50b31cc6c81e3944ad6082c7287b453936a3326d6",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Maio 2024.xlsx",
+      "stored_relative_path": "Maio 2024.xlsx",
+      "size_bytes": 25754,
+      "sha256": "fc61164bacb2e280966350298fac8f16a5441c0280c173f7f6473758fd1059da",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Maio 2025.xlsx",
+      "stored_relative_path": "Maio 2025.xlsx",
+      "size_bytes": 55909,
+      "sha256": "f96874427539862c9d5e20d734c45f446f4d2f1502707b754401f0243c3cb6d5",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Março 2024.xlsx",
+      "stored_relative_path": "Março 2024.xlsx",
+      "size_bytes": 20420,
+      "sha256": "f8c8fdae70ceb76ef4406dd8d5238a502c3252217d5cf42291d55e13dd53315a",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Março 2025.xlsx",
+      "stored_relative_path": "Março 2025.xlsx",
+      "size_bytes": 44393,
+      "sha256": "03eb143fb8f6503c2651ec726454f02397b28f4e7373cddc69e19e95afbb0421",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2023.xlsx",
+      "stored_relative_path": "Novembro 2023.xlsx",
+      "size_bytes": 20259,
+      "sha256": "95ba58896fbf974a12b0cd85b0794b160b7a998fb9886e1a82225d563661e2b7",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2024.xlsx",
+      "stored_relative_path": "Novembro 2024.xlsx",
+      "size_bytes": 29516,
+      "sha256": "bc98d156de4afa9b32a368735e82092d8f621ca7d04d21e6ec53dd42138a328a",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Novembro 2025.xlsx",
+      "stored_relative_path": "Novembro 2025.xlsx",
+      "size_bytes": 45540,
+      "sha256": "37f4f7ea756aca093767a1b68c62f7e73b7b71aa98d2f54bdf98b90f3418b493",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Outubro 2024.xlsx",
+      "stored_relative_path": "Outubro 2024.xlsx",
+      "size_bytes": 25426,
+      "sha256": "ee36fd0cdc0978b8707c11cf79cba04c07bbb2a226e43d1dda2414de6e2751e4",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Outubro 2025.xlsx",
+      "stored_relative_path": "Outubro 2025.xlsx",
+      "size_bytes": 58035,
+      "sha256": "0f915f66e59b2daf7bd7dacb14744c4a3080261cb6c873bdd46987fa8ad4c90a",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Setembro 2024.xlsx",
+      "stored_relative_path": "Setembro 2024.xlsx",
+      "size_bytes": 24732,
+      "sha256": "4605d665df3be9245352170104c4acf1d4e8a4d33b3519a67b8d3bd5071845c5",
+      "status": "already_present"
+    },
+    {
+      "imported_at_utc": "2026-03-18T12:30:00+00:00",
+      "source_zip": "c:\\Users\\Vitor\\Documents\\sistema-pós-venda\\credito.zip",
+      "zip_entry": "credito/Setembro 2025.xlsx",
+      "stored_relative_path": "Setembro 2025.xlsx",
+      "size_bytes": 43893,
+      "sha256": "e2ba9827e3c46f411bf045e117d0d2de940bd809d64d02a5e3e307cc9db75d1f",
+      "status": "already_present"
+    }
+  ]
+}
