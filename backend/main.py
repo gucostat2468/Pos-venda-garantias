@@ -12,6 +12,7 @@ import models  # noqa: F401 – garante que as tabelas são registradas
 from routers import auth, casos, clientes, usuarios, credito, notificacoes
 from services.credito_ingest import sync_credito_files_to_db
 from services.credito_reconcile import reconcile_credito_to_cases
+from seed_data import seed_database
 
 # Criar tabelas
 run_sqlite_migrations(engine)
@@ -61,6 +62,13 @@ app.include_router(notificacoes.router, prefix="/api/notificacoes", tags=["Notif
 
 @app.on_event("startup")
 def startup_sync_credito_data():
+    # Garante usuários padrão também em ambientes que sobem com `uvicorn main:app`.
+    # O seed é idempotente: se já houver usuários, não altera nada.
+    try:
+        seed_database()
+    except Exception as exc:
+        print(f"Erro ao executar seed inicial no startup: {exc}")
+
     db = SessionLocal()
     try:
         sync_credito_files_to_db(db, Path(BASE_DIR) / "credito")
