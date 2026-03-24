@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { casosAPI } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge, RebateBadge, TipoBadge } from '../components/StatusBadge'
 import useMediaQuery from '../hooks/useMediaQuery'
+import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
+import { abrirImpressaoPdf } from '../utils/print'
+import { formatApiDateTimeBR } from '../utils/datetime'
 
 const DOCS_FLUXO_OFICINA = [
   {
@@ -13,6 +16,14 @@ const DOCS_FLUXO_OFICINA = [
       'Remessa (Documento de separação dos itens no estoque)',
       'Remessa (Pedido)',
       'Remessa',
+    ],
+  },
+  {
+    label: 'Caso de aprovação DJI',
+    obrigatorio: false,
+    aliases: [
+      'Caso de aprovação DJI',
+      'Caso de aprovacao DJI',
     ],
   },
   {
@@ -39,9 +50,23 @@ const normalizeText = (value) => String(value || '')
   .trim()
   .toLowerCase()
 
+const categorizarTipoDocumento = (tipoDocumento) => {
+  const tipo = normalizeText(tipoDocumento)
+  if (!tipo) return 'categoria_outros'
+  if ((tipo.includes('nota fiscal') && tipo.includes('remessa')) || tipo.includes('nf remessa')) {
+    return 'categoria_nf_remessa'
+  }
+  if (tipo.includes('relatorio tecnico')) return 'categoria_relatorio_tecnico'
+  if (tipo.includes('remessa')) return 'categoria_remessa'
+  return 'categoria_outros'
+}
+
+const isDocumentoAssinavel = (doc) => categorizarTipoDocumento(doc?.tipo_documento) === 'categoria_remessa'
+
 export default function CasoDetail() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { user, podeAssinar, isAdmin, isOperador } = useAuth()
   const [caso, setCaso] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -60,11 +85,14 @@ export default function CasoDetail() {
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingDocs, setDownloadingDocs] = useState({})
   const [confirmandoImpressao, setConfirmandoImpressao] = useState(false)
+  const [previewDocUrl, setPreviewDocUrl] = useState('')
+  const [previewDocLoading, setPreviewDocLoading] = useState(false)
   const fileRefs = useRef({})
   const canvasRef = useRef(null)
   const isDrawingRef = useRef(false)
+  const autoSignHandledRef = useRef(false)
 
-  const fetchCaso = async () => {
+  const fetchCaso = useCallback(async () => {
     try {
       const res = await casosAPI.obter(id)
       setCaso(res.data)
@@ -79,9 +107,9 @@ export default function CasoDetail() {
     } catch (e) {
       console.error(e)
     }
-  }
+  }, [id])
 
-  const fetchCreditoCaso = async () => {
+  const fetchCreditoCaso = useCallback(async () => {
     try {
       const [vincRes, resumoRes] = await Promise.all([
         casosAPI.listarCreditoVinculos(id),
@@ -94,12 +122,28 @@ export default function CasoDetail() {
       setCreditoVinculos([])
       setCreditoResumo(null)
     }
-  }
+  }, [id])
+
+  const refreshCaso = useCallback(async ({ silent = true } = {}) => {
+    if (!silent) setLoading(true)
+    try {
+      await Promise.all([fetchCaso(), fetchCreditoCaso()])
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }, [fetchCaso, fetchCreditoCaso])
 
   useEffect(() => {
-    setLoading(true)
-    Promise.all([fetchCaso(), fetchCreditoCaso()]).finally(() => setLoading(false))
-  }, [id])
+    refreshCaso({ silent: false }).catch((err) => console.error(err))
+  }, [refreshCaso])
+
+  useRealtimeRefresh(
+    () => refreshCaso({ silent: true }),
+    {
+      enabled: Boolean(id) && !editMode && !assinaModal,
+      intervalMs: 2000,
+    }
+  )
 
   const handleUpload = async (tipoDocumento, file) => {
     if (!file) return
@@ -248,13 +292,32 @@ export default function CasoDetail() {
   }
 
   const handleConfirmarImpressao = async () => {
+    const iniciar = window.confirm(
+      'Abrir impressão em 3 vias deste caso?\n\n' +
+      '1ª via: Financeiro\n2ª via: Estoque\n3ª via: Controle da Oficina'
+    )
+    if (!iniciar) return
+
     setConfirmandoImpressao(true)
     try {
+      // Sempre recompila antes de imprimir para garantir assinaturas mais recentes no dossiê.
+      await casosAPI.compilarPdf(id)
+      const pdfRes = await casosAPI.downloadPdfFile(id)
+
+      abrirImpressaoPdf(pdfRes.data)
+
+      const confirmarFinalizacao = window.confirm(
+        'A tela de impressão foi aberta.\n' +
+        'No diálogo de impressão, selecione 3 cópias.\n\n' +
+        'Clique em OK somente após imprimir para finalizar o caso.'
+      )
+      if (!confirmarFinalizacao) return
+
       await casosAPI.confirmarImpressao(id)
       await Promise.all([fetchCaso(), fetchCreditoCaso()])
       alert('Impressão em 3 vias confirmada e caso finalizado!')
     } catch (err) {
-      alert(err.response?.data?.detail || 'Erro ao confirmar impressão')
+      alert(err.response?.data?.detail || err.message || 'Erro ao confirmar impressão')
     } finally {
       setConfirmandoImpressao(false)
     }
@@ -324,28 +387,23 @@ export default function CasoDetail() {
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-muted)' }}>Carregando...</div>
-  if (!caso) return <div style={{ textAlign: 'center', padding: 80 }}>Caso não encontrado. <Link to="/casos">Voltar</Link></div>
-
-  const docsObrigatorios = DOCS_FLUXO_OFICINA
-  const docsObrigatoriosAliasesNorm = docsObrigatorios
-    .flatMap((docConfig) => docConfig.aliases)
-    .map((alias) => normalizeText(alias))
-  const findDocumentoByAliases = (aliases = []) => {
-    const aliasesNorm = aliases.map((alias) => normalizeText(alias))
-    return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
+  const abrirModalAssinatura = () => {
+    setAssinaDecisao('Aprovado')
+    setAssinaObs('')
+    setAssinaturaDocStep(0)
+    setAssinaModal(true)
   }
-  const canSign = podeAssinar(caso)
-  const isFinalOrReprovado = ['Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
-  const canManageOfficeDocs = (isOperador || isAdmin) && !isFinalOrReprovado
-  const etapaAssinaturaAtual = caso.status === 'Aguardando Aprovação Pós-Venda'
+
+  const autoSignRequested = searchParams.get('assinar') === '1'
+  const canSign = caso ? podeAssinar(caso) : false
+  const etapaAssinaturaAtual = caso?.status === 'Aguardando Aprovação Pós-Venda'
     ? 'Pos-venda'
-    : caso.status === 'Aguardando Aprovação Diretoria'
+    : caso?.status === 'Aguardando Aprovação Diretoria'
       ? 'Diretoria'
       : null
-  const documentosAssinaveis = (caso.documentos || [])
-    .filter((doc) => normalizeText(doc.tipo_documento) !== normalizeText('Vídeo de Descarte'))
-  const documentosAssinadosEtapa = (caso.documento_assinaturas || []).filter(
+  const documentosAssinaveis = (caso?.documentos || [])
+    .filter((doc) => isDocumentoAssinavel(doc))
+  const documentosAssinadosEtapa = (caso?.documento_assinaturas || []).filter(
     (sig) => sig.etapa_fluxo === etapaAssinaturaAtual && sig.usuario_id === user?.id
   )
   const documentosAssinadosIds = new Set(documentosAssinadosEtapa.map((sig) => sig.documento_id))
@@ -357,14 +415,97 @@ export default function CasoDetail() {
   ] || null
   const papelAssinaturaLabel = etapaAssinaturaAtual === 'Pos-venda' ? 'Gerente Pós-venda' : 'Diretor Comercial'
 
+  useEffect(() => {
+    if (!autoSignRequested || autoSignHandledRef.current) return
+    if (loading || !caso) return
+    autoSignHandledRef.current = true
+    if (canSign) abrirModalAssinatura()
+  }, [autoSignRequested, loading, caso, canSign])
+
+  useEffect(() => {
+    if (!assinaModal || !documentoAtualAssinatura) {
+      setPreviewDocUrl('')
+      setPreviewDocLoading(false)
+      return undefined
+    }
+
+    let isActive = true
+    let objectUrl = ''
+
+    const carregarPreview = async () => {
+      setPreviewDocLoading(true)
+      try {
+        const res = await casosAPI.downloadDocumentoFile(id, documentoAtualAssinatura.id)
+        objectUrl = window.URL.createObjectURL(res.data)
+        if (isActive) {
+          setPreviewDocUrl(objectUrl)
+        } else {
+          window.URL.revokeObjectURL(objectUrl)
+        }
+      } catch (err) {
+        console.error(err)
+        if (isActive) setPreviewDocUrl('')
+      } finally {
+        if (isActive) setPreviewDocLoading(false)
+      }
+    }
+
+    carregarPreview()
+
+    return () => {
+      isActive = false
+      if (objectUrl) {
+        window.URL.revokeObjectURL(objectUrl)
+      }
+    }
+  }, [assinaModal, id, documentoAtualAssinatura?.id])
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-muted)' }}>Carregando...</div>
+  if (!caso) return <div style={{ textAlign: 'center', padding: 80 }}>Caso não encontrado. <Link to="/casos">Voltar</Link></div>
+
+  const docsObrigatorios = DOCS_FLUXO_OFICINA
+  const docsObrigatoriosAliasesNorm = docsObrigatorios
+    .flatMap((docConfig) => docConfig.aliases)
+    .map((alias) => normalizeText(alias))
+  const findDocumentoByAliases = (aliases = []) => {
+    const aliasesNorm = aliases.map((alias) => normalizeText(alias))
+    return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
+  }
+  const isFinalOrReprovado = ['Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
+  const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
+  const canManageOfficeDocs = (isOperador || isAdmin) && !isLockedForOfficeEdition
+  const assinaturasPorDocumento = (caso.documento_assinaturas || []).reduce((acc, sig) => {
+    if (!acc[sig.documento_id]) acc[sig.documento_id] = []
+    acc[sig.documento_id].push(sig)
+    return acc
+  }, {})
+  const resumoAssinaturasDocumento = (doc) => {
+    if (!doc) return null
+    if (!isDocumentoAssinavel(doc)) {
+      return {
+        assinadoPos: false,
+        assinadoDir: false,
+        texto: 'Assinatura não obrigatória para este documento.',
+      }
+    }
+    const docId = doc.id
+    const lista = assinaturasPorDocumento[docId] || []
+    const assinadoPos = lista.some((sig) => sig.etapa_fluxo === 'Pos-venda')
+    const assinadoDir = lista.some((sig) => sig.etapa_fluxo === 'Diretoria')
+    return {
+      assinadoPos,
+      assinadoDir,
+      texto: `Assinaturas: Pós-venda ${assinadoPos ? '✓' : 'pendente'} · Diretor ${assinadoDir ? '✓' : 'pendente'}`,
+    }
+  }
+
   const totalCreditoAlocado = Number(creditoResumo?.total_alocado || 0)
   const formatMoney = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const abrirModalAssinatura = () => {
-    setAssinaDecisao('Aprovado')
-    setAssinaObs('')
-    setAssinaturaDocStep(0)
-    setAssinaModal(true)
-  }
+  const acaoAssinaturaLabel = assinaDecisao === 'Aprovado'
+    ? (etapaAssinaturaAtual === 'Pos-venda'
+      ? 'Assinar e Encaminhar ao Diretor Comercial'
+      : 'Assinar e Encaminhar para Impressão')
+    : 'Reprovar Caso'
   const pipelineSteps = [
     { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
     { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
@@ -389,7 +530,7 @@ export default function CasoDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {!isFinalOrReprovado && !editMode && (isOperador || isAdmin) && (
+          {!isLockedForOfficeEdition && !editMode && (isOperador || isAdmin) && (
             <button onClick={() => setEditMode(true)} style={s.outlineBtn}>✏️ Editar</button>
           )}
           {caso.link_pdf_compilado && (
@@ -402,7 +543,7 @@ export default function CasoDetail() {
           )}
           {(isOperador || isAdmin) && caso.status === 'Aguardando Impressão Oficina' && (
             <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={s.signBtn}>
-              {confirmandoImpressao ? 'Confirmando...' : '🖨️ Confirmar Impressão (3 vias)'}
+              {confirmandoImpressao ? 'Processando...' : '🖨️ Imprimir (3 vias) e Finalizar'}
             </button>
           )}
         </div>
@@ -534,6 +675,7 @@ export default function CasoDetail() {
             const tipo = docConfig.label
             const doc = findDocumentoByAliases(docConfig.aliases)
             const isUploading = uploading[tipo]
+            const assinaturaResumo = doc ? resumoAssinaturasDocumento(doc) : null
             return (
               <div key={tipo} style={{ ...s.docRow, ...(doc ? s.docRowDone : {}) }}>
                 <div style={s.docIcon}>{doc ? '✅' : '📄'}</div>
@@ -545,6 +687,11 @@ export default function CasoDetail() {
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                       {doc.nome_arquivo} · {doc.tamanho_bytes ? `${(doc.tamanho_bytes / 1024).toFixed(0)} KB` : ''} ·{' '}
                       {new Date(doc.data_upload).toLocaleDateString('pt-BR')}
+                    </div>
+                  )}
+                  {doc && assinaturaResumo && (
+                    <div style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>
+                      {assinaturaResumo.texto}
                     </div>
                   )}
                 </div>
@@ -585,8 +732,10 @@ export default function CasoDetail() {
           {/* Outros documentos (não obrigatórios) */}
           {(caso.documentos || [])
             .filter(d => !docsObrigatoriosAliasesNorm.includes(normalizeText(d.tipo_documento)))
-            .map((doc) => (
-              <div key={doc.id} style={{ ...s.docRow, background: '#f8fafc' }}>
+            .map((doc) => {
+              const assinaturaResumo = resumoAssinaturasDocumento(doc)
+              return (
+                <div key={doc.id} style={{ ...s.docRow, background: '#f8fafc' }}>
                 <div style={s.docIcon}>
                   {doc.tipo_documento === 'Vídeo de Descarte' ? '🎥' : '📎'}
                 </div>
@@ -595,6 +744,11 @@ export default function CasoDetail() {
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                     {doc.nome_arquivo} · {doc.tamanho_bytes ? `${(doc.tamanho_bytes / 1024 / 1024).toFixed(1)} MB` : ''}
                   </div>
+                  {doc.tipo_documento !== 'Vídeo de Descarte' && (
+                    <div style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>
+                      {assinaturaResumo.texto}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -606,8 +760,9 @@ export default function CasoDetail() {
                     {downloadingDocs[doc.id] ? '...' : '⬇ Baixar'}
                   </button>
                 </div>
-              </div>
-            ))}
+                </div>
+              )
+            })}
 
         </div>
       </div>
@@ -676,7 +831,7 @@ export default function CasoDetail() {
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {sig.usuario?.nome} · {new Date(sig.data_assinatura).toLocaleString('pt-BR')}
+                      {sig.usuario?.nome} · {formatApiDateTimeBR(sig.data_assinatura)}
                     </div>
                     {sig.observacao && <div style={{ fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>"{sig.observacao}"</div>}
                   </div>
@@ -705,7 +860,7 @@ export default function CasoDetail() {
             <p style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>2ª via: Estoque</p>
             <p style={{ fontSize: 12, color: '#166534', marginBottom: 12 }}>3ª via: Controle da oficina</p>
             <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={s.signBtn}>
-              {confirmandoImpressao ? 'Confirmando...' : 'Confirmar Impressão e Finalizar'}
+              {confirmandoImpressao ? 'Processando...' : 'Imprimir (3 vias) e Finalizar'}
             </button>
           </div>
         )}
@@ -737,11 +892,17 @@ export default function CasoDetail() {
                       Documento pendente: <strong>{documentoAtualAssinatura.nome_arquivo}</strong>
                     </div>
                     <div style={s.signDocViewer}>
-                      <iframe
-                        title={`Documento ${documentoAtualAssinatura.nome_arquivo}`}
-                        src={casosAPI.downloadDocumento(id, documentoAtualAssinatura.id)}
-                        style={{ ...s.signIframe, ...(isMobile ? s.signIframeMobile : {}) }}
-                      />
+                      {previewDocLoading ? (
+                        <div style={s.previewLoading}>Carregando preview do documento...</div>
+                      ) : previewDocUrl ? (
+                        <iframe
+                          title={`Documento ${documentoAtualAssinatura.nome_arquivo}`}
+                          src={previewDocUrl}
+                          style={{ ...s.signIframe, ...(isMobile ? s.signIframeMobile : {}) }}
+                        />
+                      ) : (
+                        <div style={s.previewError}>Não foi possível carregar o preview. Baixe o documento para validar.</div>
+                      )}
                     </div>
 
                     <div style={s.signCanvasCard}>
@@ -845,7 +1006,7 @@ export default function CasoDetail() {
                 background: assinaDecisao === 'Aprovado' ? 'var(--success)' : 'var(--danger)',
               }}
               >
-                {assinando ? 'Processando...' : `Confirmar ${assinaDecisao}`}
+                {assinando ? 'Processando...' : acaoAssinaturaLabel}
               </button>
             </div>
           </div>
@@ -980,6 +1141,19 @@ const s = {
     overflow: 'hidden',
     background: '#fff',
     marginBottom: 12,
+  },
+  previewLoading: {
+    padding: '18px 14px',
+    fontSize: 13,
+    color: 'var(--text-muted)',
+    textAlign: 'center',
+  },
+  previewError: {
+    padding: '18px 14px',
+    fontSize: 13,
+    color: '#991b1b',
+    textAlign: 'center',
+    background: '#fff1f2',
   },
   signIframe: {
     width: '100%',

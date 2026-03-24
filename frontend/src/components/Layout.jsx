@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import useMediaQuery from '../hooks/useMediaQuery'
+import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
+import { notificacoesAPI } from '../api'
+import { formatApiDateTimeBR } from '../utils/datetime'
 
 const PAPEL_LABEL = {
   admin: 'Administrador',
@@ -99,6 +102,14 @@ export default function Layout({ children }) {
   const location = useLocation()
   const isMobile = useMediaQuery('(max-width: 980px)')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [notificacoes, setNotificacoes] = useState([])
+  const [naoLidas, setNaoLidas] = useState(0)
+  const [notificacoesOpen, setNotificacoesOpen] = useState(false)
+  const [notificacoesDisponiveis, setNotificacoesDisponiveis] = useState(true)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const [notifErro, setNotifErro] = useState('')
+  const [notifAtualizando, setNotifAtualizando] = useState(false)
+  const notifRef = useRef(null)
   const pageMeta = getPageMeta(location.pathname)
   const statusQuery = new URLSearchParams(location.search).get('status')
   const isQueueStatus =
@@ -115,6 +126,119 @@ export default function Layout({ children }) {
       setMobileMenuOpen(false)
     }
   }, [isMobile])
+
+  const carregarNotificacoes = useCallback(async ({ silent = false } = {}) => {
+    if (!user?.id) return
+    if (!notificacoesDisponiveis) return
+    if (!silent) setNotifLoading(true)
+    try {
+      const [listaRes, resumoRes] = await Promise.all([
+        notificacoesAPI.listar({ limite: 30 }),
+        notificacoesAPI.resumo(),
+      ])
+      setNotificacoes(Array.isArray(listaRes.data) ? listaRes.data : [])
+      setNaoLidas(Number(resumoRes.data?.nao_lidas || 0))
+      if (!notificacoesDisponiveis) {
+        setNotificacoesDisponiveis(true)
+      }
+      setNotifErro('')
+    } catch (err) {
+      console.error(err)
+      if (err?.response?.status === 404) {
+        setNotificacoesDisponiveis(false)
+        setNotificacoes([])
+        setNaoLidas(0)
+        setNotifErro('Central de notificações indisponível neste backend. Reinicie o backend com a versão atualizada.')
+        return
+      }
+      if (!silent) setNotifErro('Falha ao carregar notificações.')
+    } finally {
+      if (!silent) setNotifLoading(false)
+    }
+  }, [user?.id, notificacoesDisponiveis])
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+    setNotificacoesDisponiveis(true)
+    carregarNotificacoes({ silent: false }).catch((err) => console.error(err))
+    return undefined
+  }, [user?.id, carregarNotificacoes])
+
+  useRealtimeRefresh(
+    () => carregarNotificacoes({ silent: true }),
+    { enabled: Boolean(user?.id) && notificacoesDisponiveis, intervalMs: 2000 }
+  )
+
+  useEffect(() => {
+    setNotificacoesOpen(false)
+  }, [location.pathname, location.search])
+
+  useEffect(() => {
+    if (!notificacoesOpen) return undefined
+    const onPointerDown = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotificacoesOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [notificacoesOpen])
+
+  const handleToggleNotificacoes = async () => {
+    setNotificacoesOpen((prev) => !prev)
+    if (!notificacoesDisponiveis) return
+    if (!notificacoesOpen) {
+      await carregarNotificacoes({ silent: false })
+    }
+  }
+
+  const handleMarcarLida = async (notificacaoId) => {
+    if (!notificacaoId) return
+    const alvo = notificacoes.find((n) => n.id === notificacaoId)
+    if (!alvo || alvo.lida) return
+    setNotifAtualizando(true)
+    try {
+      await notificacoesAPI.marcarLida(notificacaoId)
+      setNotificacoes((prev) => prev.map((n) => (
+        n.id === notificacaoId ? { ...n, lida: 1, lida_em: new Date().toISOString() } : n
+      )))
+      setNaoLidas((prev) => Math.max(prev - 1, 0))
+    } catch (err) {
+      console.error(err)
+      setNotifErro('Falha ao marcar notificação como lida.')
+    } finally {
+      setNotifAtualizando(false)
+    }
+  }
+
+  const handleMarcarTodasLidas = async () => {
+    setNotifAtualizando(true)
+    try {
+      const res = await notificacoesAPI.marcarTodasLidas()
+      const total = Number(res.data?.total || 0)
+      if (total > 0) {
+        const now = new Date().toISOString()
+        setNotificacoes((prev) => prev.map((n) => ({ ...n, lida: 1, lida_em: now })))
+      }
+      setNaoLidas(0)
+    } catch (err) {
+      console.error(err)
+      setNotifErro('Falha ao marcar notificações.')
+    } finally {
+      setNotifAtualizando(false)
+    }
+  }
+
+  const handleAbrirCasoNotificacao = async (notificacao) => {
+    if (!notificacao) return
+    if (!notificacao.lida) {
+      await handleMarcarLida(notificacao.id)
+    }
+    setNotificacoesOpen(false)
+    if (notificacao.case_id) {
+      navigate(`/casos/${notificacao.case_id}`)
+    }
+  }
 
   const menuPrincipal = [
     {
@@ -192,6 +316,7 @@ export default function Layout({ children }) {
     logout()
     navigate('/login')
   }
+  const setorNotificacoes = PAPEL_LABEL[user?.papel] || 'Setor'
 
   return (
     <div className="dp-shell">
@@ -266,9 +391,87 @@ export default function Layout({ children }) {
                 ☰
               </button>
             )}
-            <button className="dp-icon-btn" type="button" aria-label="Notificações">
-              !
-            </button>
+            <div className="dp-notif-wrap" ref={notifRef}>
+              <button
+                className="dp-icon-btn dp-notif-btn"
+                type="button"
+                aria-label="Notificações"
+                onClick={handleToggleNotificacoes}
+              >
+                🔔
+                {naoLidas > 0 && (
+                  <span className="dp-notif-badge" aria-label={`${naoLidas} não lidas`}>
+                    {naoLidas > 99 ? '99+' : naoLidas}
+                  </span>
+                )}
+              </button>
+
+              {notificacoesOpen && (
+                <div className="dp-notif-panel" role="dialog" aria-label="Central de notificações">
+                  <div className="dp-notif-panel-head">
+                    <div>
+                      <div className="dp-notif-title">Notificações do Setor</div>
+                      <div className="dp-notif-subtitle">{setorNotificacoes}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="dp-notif-mark-all"
+                      onClick={handleMarcarTodasLidas}
+                      disabled={notifAtualizando || naoLidas === 0 || !notificacoesDisponiveis}
+                    >
+                      Marcar todas
+                    </button>
+                  </div>
+
+                  {notifErro && <div className="dp-notif-error">{notifErro}</div>}
+
+                  {notifLoading ? (
+                    <div className="dp-notif-empty">Carregando notificações...</div>
+                  ) : notificacoes.length === 0 ? (
+                    <div className="dp-notif-empty">Nenhum aviso para este setor no momento.</div>
+                  ) : (
+                    <div className="dp-notif-list">
+                      {notificacoes.map((notificacao) => (
+                        <article
+                          key={notificacao.id}
+                          className={`dp-notif-item ${notificacao.lida ? 'is-read' : 'is-unread'}`}
+                        >
+                          <div className="dp-notif-item-head">
+                            <strong>{notificacao.titulo}</strong>
+                            {!notificacao.lida && <span className="dp-notif-pill">Novo</span>}
+                          </div>
+                          <p className="dp-notif-item-msg">{notificacao.mensagem}</p>
+                          <div className="dp-notif-item-meta">
+                            {formatApiDateTimeBR(notificacao.criado_em)}
+                          </div>
+                          <div className="dp-notif-item-actions">
+                            {notificacao.case_id && (
+                              <button
+                                type="button"
+                                className="dp-notif-open-case"
+                                onClick={() => handleAbrirCasoNotificacao(notificacao)}
+                              >
+                                Abrir Caso
+                              </button>
+                            )}
+                            {!notificacao.lida && (
+                              <button
+                                type="button"
+                                className="dp-notif-mark-one"
+                                onClick={() => handleMarcarLida(notificacao.id)}
+                                disabled={notifAtualizando}
+                              >
+                                Marcar como lida
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="dp-topbar-avatar">{getInitials(user?.nome)}</div>
           </div>
         </header>

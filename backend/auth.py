@@ -1,14 +1,20 @@
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from database import get_db
 import models
 
-SECRET_KEY = "dronepro-garantias-secret-key-2026-muito-seguro"
+SECRET_KEY = os.getenv("DRONEPRO_SECRET_KEY")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+if not SECRET_KEY:
+    if ENVIRONMENT in {"production", "prod"}:
+        raise RuntimeError("Defina DRONEPRO_SECRET_KEY no ambiente de produção.")
+    SECRET_KEY = "dev-only-change-me-dronepro-2026"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas
 
@@ -66,10 +72,9 @@ def get_current_user(
 
 def get_current_user_download(
     bearer_token: Optional[str] = Depends(oauth2_scheme_optional),
-    token: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ) -> models.Usuario:
-    raw_token = bearer_token or token
+    raw_token = bearer_token
     if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

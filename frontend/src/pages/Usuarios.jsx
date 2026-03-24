@@ -166,7 +166,7 @@ export default function Usuarios() {
                       <button onClick={() => openModal(u)} style={s.editBtn}>Editar</button>
                       <button onClick={() => { setResetModal(u); setNovaSenha('') }} style={s.editBtn}>Senha</button>
                       {u.id !== currentUser?.id && u.ativo && (
-                        <button onClick={() => handleDesativar(u)} style={s.delBtn}>Desativar</button>
+                        <button onClick={() => handleDesativar(u)} style={s.delBtn}>🗑 Desativar</button>
                       )}
                     </div>
                   </article>
@@ -234,7 +234,7 @@ export default function Usuarios() {
                         <button onClick={() => openModal(u)} style={s.editBtn}>✏️ Editar</button>
                         <button onClick={() => { setResetModal(u); setNovaSenha('') }} style={s.editBtn}>🔑</button>
                         {u.id !== currentUser?.id && u.ativo && (
-                          <button onClick={() => handleDesativar(u)} style={s.delBtn}>🚫</button>
+                          <button onClick={() => handleDesativar(u)} style={s.delBtn}>🗑</button>
                         )}
                       </div>
                     </td>

@@ -6,12 +6,6 @@ const api = axios.create({
 })
 
 const encodePath = (path) => String(path).split('/').map((p) => encodeURIComponent(p)).join('/')
-const withTokenQuery = (url) => {
-  const token = localStorage.getItem('token')
-  if (!token) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}token=${encodeURIComponent(token)}`
-}
 
 // Inject token automaticamente
 api.interceptors.request.use((config) => {
@@ -56,7 +50,6 @@ export const casosAPI = {
   }),
   listarDocumentos: (id) => api.get(`/casos/${id}/documentos`),
   deletarDocumento: (caseId, docId) => api.delete(`/casos/${caseId}/documentos/${docId}`),
-  downloadDocumento: (caseId, docId) => withTokenQuery(`/api/casos/${caseId}/documentos/${docId}/download`),
   downloadDocumentoFile: (caseId, docId) => api.get(`/casos/${caseId}/documentos/${docId}/download`, { responseType: 'blob' }),
   assinarDocumento: (caseId, docId, assinatura_data_url) => api.post(`/casos/${caseId}/documentos/${docId}/assinar`, { assinatura_data_url }),
   assinar: (id, data) => api.post(`/casos/${id}/assinar`, data),
@@ -66,7 +59,6 @@ export const casosAPI = {
     timeout: 300000,
   }),
   compilarPdf: (id) => api.post(`/casos/${id}/compilar-pdf`),
-  downloadPdf: (id) => withTokenQuery(`/api/casos/${id}/pdf`),
   downloadPdfFile: (id) => api.get(`/casos/${id}/pdf`, { responseType: 'blob' }),
   listarCreditoVinculos: (id) => api.get(`/casos/${id}/credito-vinculos`),
   obterCreditoResumo: (id) => api.get(`/casos/${id}/credito-resumo`),
@@ -100,6 +92,13 @@ export const creditoAPI = {
   reconciliar: () => api.post('/credito/reconciliar'),
   listarVinculosCliente: () => api.get('/credito/cliente-vinculos'),
   listarVinculosCaso: (casoId) => api.get('/credito/caso-vinculos', { params: casoId ? { caso_id: casoId } : undefined }),
-  downloadArquivo: (caminhoRelativo) => withTokenQuery(`/api/credito/${encodePath(caminhoRelativo)}/download`),
   downloadArquivoFile: (caminhoRelativo) => api.get(`/credito/${encodePath(caminhoRelativo)}/download`, { responseType: 'blob' }),
+}
+
+// ─── Notificações ───────────────────────────────────────────────────────────
+export const notificacoesAPI = {
+  listar: (params) => api.get('/notificacoes/', { params }),
+  resumo: () => api.get('/notificacoes/resumo'),
+  marcarLida: (id) => api.post(`/notificacoes/${id}/marcar-lida`),
+  marcarTodasLidas: () => api.post('/notificacoes/marcar-todas-lidas'),
 }

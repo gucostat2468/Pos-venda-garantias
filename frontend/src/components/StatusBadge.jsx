@@ -13,6 +13,7 @@ const STATUS_CONFIG = {
 const REBATE_CONFIG = {
   'Não Aplicável':     { color: '#374151', bg: '#f3f4f6', icon: '—' },
   'Aguardando Apuração':{ color: '#92400e', bg: '#fef3c7', icon: '⏳' },
+  'Finalizado':        { color: '#065f46', bg: '#d1fae5', icon: '✅' },
   'Apurado':           { color: '#065f46', bg: '#d1fae5', icon: '✅' },
 }
 

@@ -38,9 +38,36 @@ export default function CreditoArquivos() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [reconciling, setReconciling] = useState(false)
+  const [downloadingArquivo, setDownloadingArquivo] = useState(false)
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
   const [filtroLancamento, setFiltroLancamento] = useState('')
+
+  const extractFilename = (headers, fallback) => {
+    const contentDisposition = headers?.['content-disposition'] || ''
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1])
+      } catch {
+        return utf8Match[1]
+      }
+    }
+    const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+    if (simpleMatch?.[1]) return simpleMatch[1]
+    return fallback
+  }
+
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -127,6 +154,22 @@ export default function CreditoArquivos() {
     }
   }
 
+  const handleDownloadArquivo = async () => {
+    const caminhoRelativo = extratoSelecionado?.arquivo_caminho_relativo
+    if (!caminhoRelativo) return
+    setDownloadingArquivo(true)
+    try {
+      const res = await creditoAPI.downloadArquivoFile(caminhoRelativo)
+      const fallback = extratoSelecionado?.arquivo_nome || 'arquivo_credito.xlsx'
+      const filename = extractFilename(res.headers, fallback)
+      downloadBlob(res.data, filename)
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'Erro ao baixar planilha')
+    } finally {
+      setDownloadingArquivo(false)
+    }
+  }
+
   return (
     <div>
         <div style={s.header}>
@@ -205,9 +248,14 @@ export default function CreditoArquivos() {
                 style={{ ...s.input, ...(isMobile ? { minWidth: '100%' } : {}) }}
               />
               {extratoSelecionado?.arquivo_caminho_relativo && (
-                <a href={creditoAPI.downloadArquivo(extratoSelecionado.arquivo_caminho_relativo)} style={s.downloadBtn}>
-                  Baixar planilha
-                </a>
+                <button
+                  type="button"
+                  onClick={handleDownloadArquivo}
+                  disabled={downloadingArquivo}
+                  style={s.downloadBtn}
+                >
+                  {downloadingArquivo ? 'Baixando...' : 'Baixar planilha'}
+                </button>
               )}
             </div>
 
@@ -411,12 +459,13 @@ const s = {
   downloadBtn: {
     color: 'var(--primary-light)',
     fontWeight: 700,
-    textDecoration: 'none',
     fontSize: 13,
     background: '#f0f7ff',
     borderRadius: 7,
     padding: '8px 10px',
     whiteSpace: 'nowrap',
+    border: 'none',
+    cursor: 'pointer',
   },
   tableWrap: {
     overflowX: 'auto',

@@ -138,7 +138,7 @@ def generate_cover_page(caso_data: dict) -> bytes:
         for sig in assinaturas:
             etapa_label = "Pós-venda" if sig.get("etapa_fluxo") == "Pos-venda" else "Diretoria Comercial"
             decisao = sig.get("status_decisao", "—")
-            data_hora = sig.get("data_assinatura", "—")
+            data_hora = sig.get("data_assinatura_formatada") or sig.get("data_assinatura", "—")
             if hasattr(data_hora, 'strftime'):
                 data_hora = data_hora.strftime("%d/%m/%Y %H:%M")
             sig_data.append([
@@ -230,13 +230,20 @@ def compile_pdf(caso_data: dict, document_paths: List[dict], output_path: str) -
 
     # 2. Cada documento
     for doc_info in document_paths:
-        path = doc_info["path_arquivo"]
-        if not os.path.exists(path):
-            continue
-
-        ext = Path(path).suffix.lower()
+        path = doc_info.get("path_arquivo")
+        pdf_bytes = doc_info.get("pdf_bytes")
 
         try:
+            if pdf_bytes:
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                for page in reader.pages:
+                    writer.add_page(page)
+                continue
+
+            if not path or not os.path.exists(path):
+                continue
+
+            ext = Path(path).suffix.lower()
             if ext == ".pdf":
                 reader = PdfReader(path)
                 for page in reader.pages:

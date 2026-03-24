@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { casosAPI } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge, TipoBadge, RebateBadge } from '../components/StatusBadge'
 import useMediaQuery from '../hooks/useMediaQuery'
+import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
+import { abrirImpressaoPdf } from '../utils/print'
 
 function formatDate(value) {
   if (!value) return '—'
@@ -26,14 +28,17 @@ export default function ImpressaoFinalizacao() {
   const canFinalize = isAdmin || isOperador
   const [loading, setLoading] = useState(true)
   const [finalizando, setFinalizando] = useState({})
+  const [deletingCases, setDeletingCases] = useState({})
   const [pendentes, setPendentes] = useState([])
   const [finalizados, setFinalizados] = useState([])
   const [busca, setBusca] = useState('')
   const [erro, setErro] = useState('')
 
-  const carregar = async () => {
-    setLoading(true)
-    setErro('')
+  const carregar = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true)
+      setErro('')
+    }
     try {
       const [pendentesRes, finalizadosRes] = await Promise.all([
         casosAPI.listar({ status: 'Aguardando Impressão Oficina' }),
@@ -53,34 +58,66 @@ export default function ImpressaoFinalizacao() {
           return db - da
         })
       )
+      setErro('')
     } catch (err) {
       console.error(err)
-      setErro(err?.response?.data?.detail || 'Erro ao carregar dados de impressão/finalização.')
+      if (!silent) {
+        setErro(err?.response?.data?.detail || 'Erro ao carregar dados de impressão/finalização.')
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    carregar()
   }, [])
 
-  const handleFinalizar = async (caso) => {
+  useEffect(() => {
+    carregar({ silent: false }).catch((err) => console.error(err))
+  }, [carregar])
+
+  useRealtimeRefresh(
+    () => carregar({ silent: true }),
+    { enabled: true, intervalMs: 2000 }
+  )
+
+  const prepararPdfAtualizado = async (casoId) => {
+    await casosAPI.compilarPdf(casoId)
+    return casosAPI.downloadPdfFile(casoId)
+  }
+
+  const handleImprimirEFinalizar = async (caso) => {
     if (!canFinalize) return
-    const confirmado = window.confirm(
-      `Confirmar impressão em 3 vias para o caso ${caso.dji_case_id || `#${caso.id}`}?\n\n` +
+    const confirmar = window.confirm(
+      `Abrir impressão e finalizar o caso ${caso.dji_case_id || `#${caso.id}`}?\n\n` +
+      'Este botão executa a última etapa do fluxo.\n' +
+      'Imprima em 3 vias:\n' +
       '1ª via: Financeiro\n2ª via: Estoque\n3ª via: Controle da Oficina'
     )
-    if (!confirmado) return
+    if (!confirmar) return
 
     setFinalizando((prev) => ({ ...prev, [caso.id]: true }))
     try {
+      const pdfRes = await prepararPdfAtualizado(caso.id)
+      abrirImpressaoPdf(pdfRes.data)
       await casosAPI.confirmarImpressao(caso.id)
       await carregar()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Erro ao confirmar impressão/finalização.')
+      alert(err.response?.data?.detail || err.message || 'Erro ao imprimir e finalizar caso.')
     } finally {
       setFinalizando((prev) => ({ ...prev, [caso.id]: false }))
+    }
+  }
+
+  const handleDeleteCase = async (caso) => {
+    if (!canFinalize) return
+    const codigo = caso.dji_case_id || `Caso #${caso.id}`
+    if (!window.confirm(`Excluir ${codigo}?\n\nEsta ação remove o caso e os arquivos enviados.`)) return
+    setDeletingCases((prev) => ({ ...prev, [caso.id]: true }))
+    try {
+      await casosAPI.deletar(caso.id)
+      await carregar()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Erro ao excluir caso')
+    } finally {
+      setDeletingCases((prev) => ({ ...prev, [caso.id]: false }))
     }
   }
 
@@ -165,15 +202,27 @@ export default function ImpressaoFinalizacao() {
                     <div style={s.mobileLine}><strong>Produto:</strong> {caso.produto_nome || '—'}</div>
                     <div style={s.mobileLine}><strong>Entrada:</strong> {formatDate(caso.data_entrada)}</div>
                     <div style={s.mobileActions}>
-                      <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
+                      <div style={s.mobileActionRow}>
+                        <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
+                        {canFinalize && (
+                          <button
+                            type="button"
+                            style={{ ...s.deleteBtn, ...s.mobileDeleteBtn }}
+                            onClick={() => handleDeleteCase(caso)}
+                            disabled={!!deletingCases[caso.id]}
+                          >
+                            {deletingCases[caso.id] ? '...' : '🗑'}
+                          </button>
+                        )}
+                      </div>
                       {canFinalize && (
                         <button
                           type="button"
                           style={{ ...s.finalizeBtn, ...s.mobileActionBtn }}
-                          onClick={() => handleFinalizar(caso)}
+                          onClick={() => handleImprimirEFinalizar(caso)}
                           disabled={!!finalizando[caso.id]}
                         >
-                          {finalizando[caso.id] ? 'Finalizando...' : 'Imprimir e Finalizar'}
+                          {finalizando[caso.id] ? 'Processando...' : 'Imprimir e Finalizar'}
                         </button>
                       )}
                     </div>
@@ -213,11 +262,21 @@ export default function ImpressaoFinalizacao() {
                             {canFinalize && (
                               <button
                                 type="button"
+                                style={s.deleteBtn}
+                                onClick={() => handleDeleteCase(caso)}
+                                disabled={!!deletingCases[caso.id]}
+                              >
+                                {deletingCases[caso.id] ? '...' : '🗑'}
+                              </button>
+                            )}
+                            {canFinalize && (
+                              <button
+                                type="button"
                                 style={s.finalizeBtn}
-                                onClick={() => handleFinalizar(caso)}
+                                onClick={() => handleImprimirEFinalizar(caso)}
                                 disabled={!!finalizando[caso.id]}
                               >
-                                {finalizando[caso.id] ? 'Finalizando...' : 'Imprimir e Finalizar'}
+                                {finalizando[caso.id] ? 'Processando...' : 'Imprimir e Finalizar'}
                               </button>
                             )}
                           </div>
@@ -256,7 +315,19 @@ export default function ImpressaoFinalizacao() {
                     <div style={s.mobileLine}><strong>Finalizado em:</strong> {formatDate(caso.atualizado_em || caso.criado_em)}</div>
                     <div style={s.mobileLine}><strong>Rebate:</strong> <RebateBadge status={caso.status_rebate} /></div>
                     <div style={s.mobileActions}>
-                      <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
+                      <div style={s.mobileActionRow}>
+                        <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
+                        {canFinalize && (
+                          <button
+                            type="button"
+                            style={{ ...s.deleteBtn, ...s.mobileDeleteBtn }}
+                            onClick={() => handleDeleteCase(caso)}
+                            disabled={!!deletingCases[caso.id]}
+                          >
+                            {deletingCases[caso.id] ? '...' : '🗑'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -289,7 +360,19 @@ export default function ImpressaoFinalizacao() {
                         <td style={s.td}><RebateBadge status={caso.status_rebate} /></td>
                         <td style={s.td}>{formatDate(caso.atualizado_em || caso.criado_em)}</td>
                         <td style={s.td}>
-                          <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
+                          <div style={s.actions}>
+                            <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
+                            {canFinalize && (
+                              <button
+                                type="button"
+                                style={s.deleteBtn}
+                                onClick={() => handleDeleteCase(caso)}
+                                disabled={!!deletingCases[caso.id]}
+                              >
+                                {deletingCases[caso.id] ? '...' : '🗑'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -330,6 +413,7 @@ const s = {
   caseLink: { color: 'var(--primary-light)', fontWeight: 700, textDecoration: 'none' },
   actions: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
   viewBtn: { border: '1px solid #cfe0fb', background: '#f0f7ff', color: 'var(--primary-light)', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 700, textDecoration: 'none' },
+  deleteBtn: { border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', minWidth: 38 },
   finalizeBtn: { border: 'none', background: '#10b981', color: '#fff', borderRadius: 7, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
   mobileList: { display: 'grid', gap: 10 },
   mobileCard: { border: '1px solid var(--border)', borderRadius: 10, padding: 10, background: '#fff', display: 'grid', gap: 7 },
@@ -337,5 +421,7 @@ const s = {
   mobileId: { color: 'var(--primary-light)', fontWeight: 800, fontSize: 13, textDecoration: 'none' },
   mobileLine: { fontSize: 13, color: 'var(--text)' },
   mobileActions: { display: 'grid', gap: 8, marginTop: 2 },
+  mobileActionRow: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 },
   mobileActionBtn: { minHeight: 40, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+  mobileDeleteBtn: { minWidth: 48, fontSize: 16, padding: '0 10px' },
 }

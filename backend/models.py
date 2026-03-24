@@ -17,6 +17,7 @@ class Usuario(Base):
 
     assinaturas = relationship("Assinatura", back_populates="usuario")
     documento_assinaturas = relationship("DocumentoAssinatura", back_populates="usuario")
+    notificacoes = relationship("Notificacao", back_populates="usuario", cascade="all, delete-orphan")
 
 
 class Cliente(Base):
@@ -47,7 +48,7 @@ class CasoGarantia(Base):
     # Status: Aguardando Documentos | Aguardando Aprovação Pós-Venda |
     #         Aguardando Aprovação Diretoria | Aguardando Impressão Oficina | Finalizado | Reprovado
     status_rebate = Column(String(50), default="Não Aplicável")
-    # Status Rebate: Não Aplicável | Aguardando Apuração | Apurado
+    # Status Rebate: Não Aplicável | Aguardando Apuração | Finalizado | Apurado
     link_pdf_compilado = Column(String(500))
     observacoes = Column(Text)
     criado_em = Column(DateTime, default=func.now())
@@ -57,6 +58,7 @@ class CasoGarantia(Base):
     documentos = relationship("Documento", back_populates="caso", cascade="all, delete-orphan")
     assinaturas = relationship("Assinatura", back_populates="caso", cascade="all, delete-orphan")
     documento_assinaturas = relationship("DocumentoAssinatura", back_populates="caso", cascade="all, delete-orphan")
+    notificacoes = relationship("Notificacao", back_populates="caso")
 
 
 class Documento(Base):
@@ -107,6 +109,23 @@ class Assinatura(Base):
 
     caso = relationship("CasoGarantia", back_populates="assinaturas")
     usuario = relationship("Usuario", back_populates="assinaturas")
+
+
+class Notificacao(Base):
+    __tablename__ = "notificacoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    case_id = Column(Integer, ForeignKey("casos_garantia.id", ondelete="SET NULL"), nullable=True, index=True)
+    tipo = Column(String(80), nullable=False, index=True)
+    titulo = Column(String(180), nullable=False)
+    mensagem = Column(String(600), nullable=False)
+    lida = Column(Integer, default=0, index=True)
+    criado_em = Column(DateTime, default=func.now(), index=True)
+    lida_em = Column(DateTime, nullable=True)
+
+    usuario = relationship("Usuario", back_populates="notificacoes")
+    caso = relationship("CasoGarantia", back_populates="notificacoes")
 
 
 class CreditoExtrato(Base):

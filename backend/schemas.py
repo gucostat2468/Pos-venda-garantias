@@ -197,6 +197,33 @@ class DashboardStats(BaseModel):
     rebate_aguardando_apuracao: int
 
 
+# ─── Notificações ────────────────────────────────────────────────────────────
+
+class NotificacaoOut(BaseModel):
+    id: int
+    usuario_id: int
+    case_id: Optional[int] = None
+    tipo: str
+    titulo: str
+    mensagem: str
+    lida: int
+    criado_em: Optional[datetime] = None
+    lida_em: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class NotificacaoResumoOut(BaseModel):
+    total: int
+    nao_lidas: int
+
+
+class NotificacaoMarcarTodasOut(BaseModel):
+    message: str
+    total: int
+
+
 # ─── Credito ─────────────────────────────────────────────────────────────────
 
 class CreditoArquivoOut(BaseModel):

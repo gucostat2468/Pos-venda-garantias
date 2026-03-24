@@ -112,7 +112,7 @@ export default function Clientes() {
                   <div style={s.mobileLine}><strong>Telefone:</strong> {c.telefone || '—'}</div>
                   <div style={s.mobileActions}>
                     <button onClick={() => openModal(c)} style={s.editBtn}>Editar</button>
-                    <button onClick={() => handleDelete(c)} style={s.delBtn}>Excluir</button>
+                    <button onClick={() => handleDelete(c)} style={s.delBtn}>🗑 Excluir</button>
                   </div>
                 </article>
               ))}

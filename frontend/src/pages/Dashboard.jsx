@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { casosAPI } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import useMediaQuery from '../hooks/useMediaQuery'
+import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
+import { parseApiDateTime } from '../utils/datetime'
 
 const DOCS_POR_TIPO = {
   Peca: [
@@ -10,6 +12,11 @@ const DOCS_POR_TIPO = {
       label: 'Remessa (Documento de separação dos itens no estoque)',
       obrigatorio: true,
       aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+    },
+    {
+      label: 'Caso de aprovação DJI',
+      obrigatorio: false,
+      aliases: ['Caso de aprovação DJI', 'Caso de aprovacao DJI'],
     },
     {
       label: 'Nota Fiscal de Remessa para Garantia',
@@ -27,6 +34,11 @@ const DOCS_POR_TIPO = {
       label: 'Remessa (Documento de separação dos itens no estoque)',
       obrigatorio: true,
       aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+    },
+    {
+      label: 'Caso de aprovação DJI',
+      obrigatorio: false,
+      aliases: ['Caso de aprovação DJI', 'Caso de aprovacao DJI'],
     },
     {
       label: 'Nota Fiscal de Remessa para Garantia',
@@ -108,7 +120,11 @@ function formatDateTime(dateString) {
   if (!dateString) {
     return '-'
   }
-  return new Date(dateString).toLocaleString('pt-BR', {
+  const parsed = parseApiDateTime(dateString)
+  if (!parsed) {
+    return '-'
+  }
+  return parsed.toLocaleString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -147,65 +163,113 @@ function compiledFilename(pathValue) {
 
 export default function Dashboard() {
   const isMobile = useMediaQuery('(max-width: 760px)')
-  const { podeAssinar } = useAuth()
+  const { podeAssinar, isAdmin, isOperador } = useAuth()
   const [stats, setStats] = useState(null)
   const [casos, setCasos] = useState([])
   const [casoDestaque, setCasoDestaque] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tableFilter, setTableFilter] = useState('todos')
+  const [downloadingDossie, setDownloadingDossie] = useState(false)
+  const [deletingCases, setDeletingCases] = useState({})
 
-  useEffect(() => {
-    let mounted = true
-
-    const load = async () => {
-      setLoading(true)
+  const extractFilename = (headers, fallback) => {
+    const contentDisposition = headers?.['content-disposition'] || ''
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utf8Match?.[1]) {
       try {
-        const [statsRes, casosRes] = await Promise.all([
-          casosAPI.stats(),
-          casosAPI.listar(),
-        ])
-
-        const lista = Array.isArray(casosRes.data) ? casosRes.data : []
-
-        if (mounted) {
-          setStats(statsRes.data || {})
-          setCasos(lista.slice(0, 12))
-        }
-
-        if (lista.length > 0) {
-          try {
-            const detailRes = await casosAPI.obter(lista[0].id)
-            if (mounted) {
-              setCasoDestaque(detailRes.data)
-            }
-          } catch {
-            if (mounted) {
-              setCasoDestaque(lista[0])
-            }
-          }
-        } else if (mounted) {
-          setCasoDestaque(null)
-        }
-      } catch (err) {
-        console.error(err)
-      } finally {
-        if (mounted) {
-          setLoading(false)
-        }
+        return decodeURIComponent(utf8Match[1])
+      } catch {
+        return utf8Match[1]
       }
     }
+    const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+    if (simpleMatch?.[1]) return simpleMatch[1]
+    return fallback
+  }
 
-    load()
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  }
 
-    return () => {
-      mounted = false
+  const handleDownloadDossie = async () => {
+    if (!casoAtual?.id) return
+    setDownloadingDossie(true)
+    try {
+      const res = await casosAPI.downloadPdfFile(casoAtual.id)
+      const filename = extractFilename(res.headers, `dossie_garantia_${casoAtual.id}.pdf`)
+      downloadBlob(res.data, filename)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Erro ao baixar PDF')
+    } finally {
+      setDownloadingDossie(false)
+    }
+  }
+
+  const refreshDashboard = useCallback(async ({ silent = true } = {}) => {
+    if (!silent) setLoading(true)
+    try {
+      const [statsRes, casosRes] = await Promise.all([
+        casosAPI.stats(),
+        casosAPI.listar(),
+      ])
+
+      const lista = Array.isArray(casosRes.data) ? casosRes.data : []
+      setStats(statsRes.data || {})
+      setCasos(lista.slice(0, 12))
+
+      if (lista.length > 0) {
+        try {
+          const detailRes = await casosAPI.obter(lista[0].id)
+          setCasoDestaque(detailRes.data)
+        } catch {
+          setCasoDestaque(lista[0])
+        }
+      } else {
+        setCasoDestaque(null)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      if (!silent) setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    refreshDashboard({ silent: false }).catch((err) => console.error(err))
+  }, [refreshDashboard])
+
+  useRealtimeRefresh(
+    () => refreshDashboard({ silent: true }),
+    { enabled: true, intervalMs: 2000 }
+  )
 
   const pendPosVenda = casos.filter((caso) => caso.status === 'Aguardando Aprovação Pós-Venda').length
   const pendDiretoria = casos.filter((caso) => caso.status === 'Aguardando Aprovação Diretoria').length
   const casoAtual = casoDestaque || casos[0] || null
   const codigoCasoAtual = formatCaseCode(casoAtual)
+  const canDeleteCase = isAdmin || isOperador
+
+  const handleDeleteCase = async (caso) => {
+    if (!canDeleteCase) return
+    const codigo = formatCaseCode(caso)
+    if (!window.confirm(`Excluir ${codigo}?\n\nEsta ação remove o caso e os arquivos enviados.`)) return
+    setDeletingCases((prev) => ({ ...prev, [caso.id]: true }))
+    try {
+      await casosAPI.deletar(caso.id)
+      await refreshDashboard()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Erro ao excluir caso')
+    } finally {
+      setDeletingCases((prev) => ({ ...prev, [caso.id]: false }))
+    }
+  }
 
   const documentosObrigatorios = DOCS_POR_TIPO[casoAtual?.tipo_processo] || DOCS_POR_TIPO.Peca
   const docsPreview = documentosObrigatorios.map((docCfg) => {
@@ -438,9 +502,14 @@ export default function Dashboard() {
                         : 'Gerado automaticamente após as duas assinaturas'}
                     </div>
                     {hasCompiledPdf ? (
-                      <a className="dash-download-btn" href={casosAPI.downloadPdf(casoAtual.id)}>
-                        Download PDF
-                      </a>
+                      <button
+                        className="dash-download-btn"
+                        type="button"
+                        onClick={handleDownloadDossie}
+                        disabled={downloadingDossie}
+                      >
+                        {downloadingDossie ? 'Baixando...' : 'Download PDF'}
+                      </button>
                     ) : (
                       <button className="dash-download-btn is-disabled" type="button" disabled>
                         PDF indisponível
@@ -492,9 +561,22 @@ export default function Dashboard() {
                             <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
                               {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}
                             </span>
-                            <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
-                              Ver Caso
-                            </Link>
+                            <div className="dash-actions-cell">
+                              <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
+                                Ver Caso
+                              </Link>
+                              {canDeleteCase && (
+                                <button
+                                  type="button"
+                                  className="dash-delete-btn"
+                                  onClick={() => handleDeleteCase(caso)}
+                                  disabled={!!deletingCases[caso.id]}
+                                  title="Excluir caso"
+                                >
+                                  {deletingCases[caso.id] ? '...' : '🗑'}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </article>
                       )
@@ -541,9 +623,22 @@ export default function Dashboard() {
                               </span>
                             </td>
                             <td>
-                              <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
-                                Ver Caso
-                              </Link>
+                              <div className="dash-actions-cell">
+                                <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
+                                  Ver Caso
+                                </Link>
+                                {canDeleteCase && (
+                                  <button
+                                    type="button"
+                                    className="dash-delete-btn"
+                                    onClick={() => handleDeleteCase(caso)}
+                                    disabled={!!deletingCases[caso.id]}
+                                    title="Excluir caso"
+                                  >
+                                    {deletingCases[caso.id] ? '...' : '🗑'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )

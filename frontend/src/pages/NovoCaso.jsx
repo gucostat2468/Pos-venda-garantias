@@ -14,6 +14,14 @@ const DOCS_FLUXO_OFICINA = [
     accept: '.pdf',
   },
   {
+    key: 'caso_aprovacao_dji',
+    label: 'Caso de aprovação DJI',
+    tipo_documento: 'Caso de aprovação DJI',
+    obrigatorio: false,
+    descricao: 'Opcional, anexar o documento oficial do caso de aprovação DJI quando disponível.',
+    accept: '.pdf',
+  },
+  {
     key: 'nf_remessa',
     label: 'Nota Fiscal de remessa para garantia',
     tipo_documento: 'Nota Fiscal de Remessa para Garantia',
@@ -57,6 +65,7 @@ export default function NovoCaso() {
   })
   const [docs, setDocs] = useState({
     remessa: null,
+    caso_aprovacao_dji: null,
     nf_remessa: null,
     relatorio_tecnico: null,
   })

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
 from db_migrations import run_sqlite_migrations
 import models  # noqa: F401 – garante que as tabelas são registradas
-from routers import auth, casos, clientes, usuarios, credito
+from routers import auth, casos, clientes, usuarios, credito, notificacoes
 from services.credito_ingest import sync_credito_files_to_db
 from services.credito_reconcile import reconcile_credito_to_cases
 
@@ -28,11 +28,24 @@ app = FastAPI(
     description="Plataforma de aprovação de garantias DJI Agriculture"
 )
 
+
+def _parse_allowed_origins() -> list[str]:
+    default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+    raw = os.getenv("ALLOWED_ORIGINS", default_origins)
+    origins = [item.strip() for item in raw.split(",") if item.strip()]
+    if not origins:
+        origins = default_origins.split(",")
+    return origins
+
+
+ALLOWED_ORIGINS = _parse_allowed_origins()
+ALLOW_CREDENTIALS = "*" not in ALLOWED_ORIGINS
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -43,6 +56,7 @@ app.include_router(casos.router, prefix="/api/casos", tags=["Casos de Garantia"]
 app.include_router(clientes.router, prefix="/api/clientes", tags=["Clientes"])
 app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuários"])
 app.include_router(credito.router, prefix="/api/credito", tags=["Crédito"])
+app.include_router(notificacoes.router, prefix="/api/notificacoes", tags=["Notificações"])
 
 
 @app.on_event("startup")

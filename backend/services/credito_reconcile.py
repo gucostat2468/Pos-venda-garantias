@@ -196,116 +196,120 @@ def reconcile_credito_to_cases(db: Session) -> dict[str, Any]:
         "vinculos_caso_criados": 0,
     }
 
-    # Reconciliação é recalculada do zero para manter consistência com mudanças de dados.
-    db.query(models.CreditoCasoVinculo).delete()
-    db.query(models.CreditoClienteVinculo).delete()
-    db.commit()
+    try:
+        # Reconciliação é recalculada do zero para manter consistência com mudanças de dados.
+        # Mantemos tudo em uma única transação para evitar estado parcial.
+        db.query(models.CreditoCasoVinculo).delete()
+        db.query(models.CreditoClienteVinculo).delete()
 
-    extratos = (
-        db.query(models.CreditoExtrato)
-        .order_by(models.CreditoExtrato.competencia_ano.asc(), models.CreditoExtrato.competencia_mes.asc())
-        .all()
-    )
-
-    for extrato in extratos:
-        clientes = db.query(models.Cliente).all()
-        summary["extratos_processados"] += 1
-        cliente, cliente_score, score_details = _find_cliente_for_extrato(extrato, clientes)
-        if not cliente:
-            cliente_auto = _find_or_create_cliente_by_dealer(db, extrato.dealer_nome or "")
-            if cliente_auto:
-                cliente = cliente_auto
-                cliente_score = 0.65
-                score_details = {"auto_created_by_dealer": True}
-            else:
-                summary["extratos_sem_cliente"] += 1
-                extrato.cliente_id = None
-                continue
-
-        summary["extratos_com_cliente"] += 1
-        extrato.cliente_id = cliente.id
-        db.add(
-            models.CreditoClienteVinculo(
-                extrato_id=extrato.id,
-                cliente_id=cliente.id,
-                score=round(cliente_score, 4),
-                metodo="dealer_nome_similarity",
-                detalhes_json=json.dumps(score_details, ensure_ascii=False),
-            )
-        )
-        db.flush()
-
-        lancamentos = (
-            db.query(models.CreditoLancamento)
-            .filter(
-                models.CreditoLancamento.extrato_id == extrato.id,
-                models.CreditoLancamento.secao.in_(["income", "expenditure"]),
-            )
-            .order_by(models.CreditoLancamento.linha_planilha.asc())
+        extratos = (
+            db.query(models.CreditoExtrato)
+            .order_by(models.CreditoExtrato.competencia_ano.asc(), models.CreditoExtrato.competencia_mes.asc())
             .all()
         )
 
-        for lanc in lancamentos:
-            summary["lancamentos_processados"] += 1
-            if lanc.valor is None or abs(lanc.valor) == 0:
-                continue
+        for extrato in extratos:
+            clientes = db.query(models.Cliente).all()
+            summary["extratos_processados"] += 1
+            cliente, cliente_score, score_details = _find_cliente_for_extrato(extrato, clientes)
+            if not cliente:
+                cliente_auto = _find_or_create_cliente_by_dealer(db, extrato.dealer_nome or "")
+                if cliente_auto:
+                    cliente = cliente_auto
+                    cliente_score = 0.65
+                    score_details = {"auto_created_by_dealer": True}
+                else:
+                    summary["extratos_sem_cliente"] += 1
+                    extrato.cliente_id = None
+                    continue
 
-            tipo_preferido = _infer_tipo_from_descricao(lanc.descricao)
-            candidatos, scope = _load_case_candidates(
-                db,
-                cliente_id=cliente.id,
-                ano=extrato.competencia_ano,
-                mes=extrato.competencia_mes,
-                tipo_preferido=tipo_preferido,
+            summary["extratos_com_cliente"] += 1
+            extrato.cliente_id = cliente.id
+            db.add(
+                models.CreditoClienteVinculo(
+                    extrato_id=extrato.id,
+                    cliente_id=cliente.id,
+                    score=round(cliente_score, 4),
+                    metodo="dealer_nome_similarity",
+                    detalhes_json=json.dumps(score_details, ensure_ascii=False),
+                )
             )
-            if not candidatos:
-                candidatos, scope = _load_case_candidates_any_client(
+            db.flush()
+
+            lancamentos = (
+                db.query(models.CreditoLancamento)
+                .filter(
+                    models.CreditoLancamento.extrato_id == extrato.id,
+                    models.CreditoLancamento.secao.in_(["income", "expenditure"]),
+                )
+                .order_by(models.CreditoLancamento.linha_planilha.asc())
+                .all()
+            )
+
+            for lanc in lancamentos:
+                summary["lancamentos_processados"] += 1
+                if lanc.valor is None or abs(lanc.valor) == 0:
+                    continue
+
+                tipo_preferido = _infer_tipo_from_descricao(lanc.descricao)
+                candidatos, scope = _load_case_candidates(
                     db,
+                    cliente_id=cliente.id,
                     ano=extrato.competencia_ano,
                     mes=extrato.competencia_mes,
                     tipo_preferido=tipo_preferido,
                 )
                 if not candidatos:
-                    continue
-
-            base_score = cliente_score
-            if scope.startswith("same_month"):
-                base_score += 0.2
-            elif scope.startswith("near_month"):
-                base_score += 0.1
-            elif scope.startswith("fallback_same_month"):
-                base_score = min(base_score, 0.35)
-            elif scope.startswith("fallback_near_month"):
-                base_score = min(base_score, 0.3)
-            if scope.endswith("_tipo"):
-                base_score += 0.1
-            base_score = min(base_score, 0.99)
-
-            valor_unit = float(lanc.valor) / len(candidatos)
-            metodo = "single_case_exact" if len(candidatos) == 1 else "equal_split_by_scope"
-
-            for caso in candidatos:
-                detalhes = {
-                    "scope": scope,
-                    "tipo_preferido": tipo_preferido,
-                    "competencia_mes": extrato.competencia_mes,
-                    "competencia_ano": extrato.competencia_ano,
-                    "num_candidatos": len(candidatos),
-                }
-                db.add(
-                    models.CreditoCasoVinculo(
-                        extrato_id=extrato.id,
-                        lancamento_id=lanc.id,
-                        cliente_id=cliente.id,
-                        caso_id=caso.id,
-                        valor_lancamento=float(lanc.valor),
-                        valor_alocado=valor_unit,
-                        score=round(base_score, 4),
-                        metodo=metodo,
-                        detalhes_json=json.dumps(detalhes, ensure_ascii=False),
+                    candidatos, scope = _load_case_candidates_any_client(
+                        db,
+                        ano=extrato.competencia_ano,
+                        mes=extrato.competencia_mes,
+                        tipo_preferido=tipo_preferido,
                     )
-                )
-                summary["vinculos_caso_criados"] += 1
+                    if not candidatos:
+                        continue
 
-    db.commit()
-    return summary
+                base_score = cliente_score
+                if scope.startswith("same_month"):
+                    base_score += 0.2
+                elif scope.startswith("near_month"):
+                    base_score += 0.1
+                elif scope.startswith("fallback_same_month"):
+                    base_score = min(base_score, 0.35)
+                elif scope.startswith("fallback_near_month"):
+                    base_score = min(base_score, 0.3)
+                if scope.endswith("_tipo"):
+                    base_score += 0.1
+                base_score = min(base_score, 0.99)
+
+                valor_unit = float(lanc.valor) / len(candidatos)
+                metodo = "single_case_exact" if len(candidatos) == 1 else "equal_split_by_scope"
+
+                for caso in candidatos:
+                    detalhes = {
+                        "scope": scope,
+                        "tipo_preferido": tipo_preferido,
+                        "competencia_mes": extrato.competencia_mes,
+                        "competencia_ano": extrato.competencia_ano,
+                        "num_candidatos": len(candidatos),
+                    }
+                    db.add(
+                        models.CreditoCasoVinculo(
+                            extrato_id=extrato.id,
+                            lancamento_id=lanc.id,
+                            cliente_id=cliente.id,
+                            caso_id=caso.id,
+                            valor_lancamento=float(lanc.valor),
+                            valor_alocado=valor_unit,
+                            score=round(base_score, 4),
+                            metodo=metodo,
+                            detalhes_json=json.dumps(detalhes, ensure_ascii=False),
+                        )
+                    )
+                    summary["vinculos_caso_criados"] += 1
+
+        db.commit()
+        return summary
+    except Exception:
+        db.rollback()
+        raise

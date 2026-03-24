@@ -25,6 +25,42 @@ Plataforma web para centralizar e formalizar o processo de aprovação de garant
 - Python 3.9+ (obrigatório)
 - Node.js 18+ (para rebuild do frontend, já incluído pré-compilado)
 
+### Modo Manual (recomendado para desenvolvimento)
+
+#### Windows (PowerShell)
+```powershell
+cd "c:\Users\Vitor\Documents\pós-venda"
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r backend\requirements.txt
+
+cd frontend
+npm install
+npm run build
+cd ..
+
+cd backend
+python main.py
+```
+
+#### Linux / macOS
+```bash
+cd /caminho/do/projeto
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r backend/requirements.txt
+
+cd frontend
+npm install
+npm run build
+cd ..
+
+cd backend
+python main.py
+```
+
 ### Windows
 ```
 start.bat
@@ -38,6 +74,20 @@ chmod +x start.sh
 
 ### Acesso
 Após iniciar, acesse: **http://localhost:8000**
+
+---
+
+## Segurança de Ambiente (Produção)
+
+Configure estas variáveis de ambiente antes de subir em produção:
+
+- `ENVIRONMENT=production`
+- `DRONEPRO_SECRET_KEY=<chave_forte_jwt>`
+- `ALLOWED_ORIGINS=https://seu-dominio.com,https://app.seu-dominio.com`
+
+Observações:
+- Sem `DRONEPRO_SECRET_KEY`, o backend falha em produção por segurança.
+- O download de arquivos/PDF exige token Bearer no header (não usa query string).
 
 ---
 
