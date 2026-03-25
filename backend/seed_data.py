@@ -9,64 +9,98 @@ from auth import get_password_hash
 from datetime import date
 
 
+DEFAULT_USERS = [
+    {
+        "nome": "Administrador",
+        "email": "admin@dronepro.com.br",
+        "senha": "admin123",
+        "papel": "admin",
+        "aliases": ["admin@dronepro"],
+    },
+    {
+        "nome": "Time Oficina",
+        "email": "operador@dronepro.com.br",
+        "senha": "operador123",
+        "papel": "operador",
+        "aliases": ["operador@dronepro"],
+    },
+    {
+        "nome": "Operador Marabá",
+        "email": "operadormaraba@dronepro.com.br",
+        "senha": "operador123",
+        "papel": "operador",
+        "aliases": [
+            "operadormaraba@dronepro",
+            "operadormarabá@dronepro",
+            "operadormarabá@dronepro.com.br",
+        ],
+    },
+    {
+        "nome": "Vanier Afonso",
+        "email": "gerente@dronepro.com.br",
+        "senha": "gerente123",
+        "papel": "gerente_pos_venda",
+        "aliases": ["gerente@dronepro"],
+    },
+    {
+        "nome": "Marcus Lawder",
+        "email": "diretor@dronepro.com.br",
+        "senha": "diretor123",
+        "papel": "diretor_comercial",
+        "aliases": ["diretor@dronepro"],
+    },
+]
+
+
+def _find_user_by_aliases(db: Session, aliases):
+    normalized = [str(v).strip().lower() for v in aliases if str(v).strip()]
+    if not normalized:
+        return None
+    return db.query(models.Usuario).filter(models.Usuario.email.in_(normalized)).first()
+
+
+def _ensure_default_users(db: Session):
+    created = []
+    for cfg in DEFAULT_USERS:
+        aliases = [cfg["email"], *cfg.get("aliases", [])]
+        user = _find_user_by_aliases(db, aliases)
+        if user:
+            continue
+        new_user = models.Usuario(
+            nome=cfg["nome"],
+            email=cfg["email"],
+            senha_hash=get_password_hash(cfg["senha"]),
+            papel=cfg["papel"],
+            ativo=1,
+        )
+        db.add(new_user)
+        created.append((cfg["email"], cfg["senha"], cfg["papel"]))
+    return created
+
+
 def seed_database():
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
     try:
         # Se já houver usuários, garante que os usuários padrão adicionais existam.
         if db.query(models.Usuario).count() > 0:
-            usuario_maraba = db.query(models.Usuario).filter(
-                models.Usuario.email == "operadormarabá@dronepro"
-            ).first()
-            if not usuario_maraba:
-                db.add(models.Usuario(
-                    nome="Operador Marabá",
-                    email="operadormarabá@dronepro",
-                    senha_hash=get_password_hash("operador123"),
-                    papel="operador",
-                    ativo=1,
-                ))
+            created_users = _ensure_default_users(db)
+            if created_users:
                 db.commit()
-                print("Usuário adicional criado: operadormarabá@dronepro / operador123")
+                for email, senha, papel in created_users:
+                    print(f"Usuário adicional criado: {email} / {senha} ({papel})")
             return
 
         print("Populando banco de dados com dados iniciais...")
 
         # ─── Usuários ────────────────────────────────────────────────────────
-        usuarios = [
-            models.Usuario(
-                nome="Administrador",
-                email="admin@dronepro",
-                senha_hash=get_password_hash("admin123"),
-                papel="admin"
-            ),
-            models.Usuario(
-                nome="Time Oficina",
-                email="operador@dronepro",
-                senha_hash=get_password_hash("operador123"),
-                papel="operador"
-            ),
-            models.Usuario(
-                nome="Operador Marabá",
-                email="operadormarabá@dronepro",
-                senha_hash=get_password_hash("operador123"),
-                papel="operador"
-            ),
-            models.Usuario(
-                nome="Vanier Afonso",
-                email="gerente@dronepro",
-                senha_hash=get_password_hash("gerente123"),
-                papel="gerente_pos_venda"
-            ),
-            models.Usuario(
-                nome="Marcus Lawder",
-                email="diretor@dronepro",
-                senha_hash=get_password_hash("diretor123"),
-                papel="diretor_comercial"
-            ),
-        ]
-        for u in usuarios:
-            db.add(u)
+        for cfg in DEFAULT_USERS:
+            db.add(models.Usuario(
+                nome=cfg["nome"],
+                email=cfg["email"],
+                senha_hash=get_password_hash(cfg["senha"]),
+                papel=cfg["papel"],
+            ))
         db.flush()
 
         # ─── Clientes de Exemplo ──────────────────────────────────────────────
@@ -162,6 +196,7 @@ def seed_database():
         print("  operadormarabá@dronepro     / operador123  (Time Oficina - Marabá)")
         print("  gerente@dronepro            / gerente123   (Vanier Afonso - Gerente Pós-venda)")
         print("  diretor@dronepro            / diretor123   (Marcus Lawder - Diretor Comercial)")
+        print("  Compatibilidade: também aceita @dronepro.com.br")
 
     except Exception as e:
         db.rollback()

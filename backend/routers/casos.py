@@ -638,6 +638,23 @@ def criar_caso(
     db.add(caso)
     db.commit()
     db.refresh(caso)
+
+    # Notifica o gerente de pós-venda imediatamente quando uma nova solicitação é aberta
+    # pela oficina, mesmo antes do envio da remessa obrigatória.
+    codigo = _codigo_caso(caso)
+    _notificar_papel(
+        db,
+        papel="gerente_pos_venda",
+        tipo="solicitacao_aberta_oficina",
+        titulo="Solicitação aberta pela oficina",
+        mensagem=(
+            f"{current_user.nome or 'Time Oficina'} abriu {codigo}. "
+            "Aguardando anexação da Remessa obrigatória para liberar a etapa de assinatura."
+        ),
+        case_id=caso.id,
+    )
+    db.commit()
+
     return _load_caso(caso.id, db)
 
 
@@ -811,9 +828,9 @@ async def upload_documento(
                 db,
                 papel="gerente_pos_venda",
                 tipo="novo_caso_pos_venda",
-                titulo="Nova solicitação aberta para assinatura",
+                titulo="Solicitação pronta para assinatura do Pós-venda",
                 mensagem=(
-                    f"{current_user.nome or 'Time Oficina'} abriu {codigo} e anexou a Remessa obrigatória. "
+                    f"{current_user.nome or 'Time Oficina'} anexou a Remessa obrigatória do {codigo}. "
                     "Aguardando assinatura do Gerente de Pós-venda."
                 ),
                 case_id=caso_refreshed.id,
@@ -1087,10 +1104,10 @@ def assinar_caso(
             db,
             papel="diretor_comercial",
             tipo="pendencia_assinatura_diretoria",
-            titulo="Assinatura pendente da Diretoria Comercial",
+            titulo="Assinatura pendente: Diretoria Comercial",
             mensagem=(
                 f"{codigo} foi aprovado pelo Gerente de Pós-venda. "
-                "Sua assinatura está pendente para continuidade da esteira."
+                "Aguardando assinatura do Diretor Comercial para continuidade da esteira."
             ),
             case_id=caso_id,
         )
@@ -1106,9 +1123,9 @@ def assinar_caso(
             db,
             papel="operador",
             tipo="pronto_impressao_finalizacao",
-            titulo="Assinaturas concluídas: caso pronto para imprimir",
+            titulo="Pronto para imprimir e finalizar",
             mensagem=(
-                f"{codigo} foi assinado por Gerente de Pós-venda e Diretor Comercial. "
+                f"{codigo} recebeu as assinaturas de Pós-venda e Diretoria Comercial. "
                 "O caso já está disponível na fila Imprimir e Finalizar."
             ),
             case_id=caso_id,

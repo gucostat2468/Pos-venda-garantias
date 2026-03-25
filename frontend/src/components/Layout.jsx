@@ -13,6 +13,34 @@ const PAPEL_LABEL = {
   diretor_comercial: 'Diretor Comercial',
 }
 
+const NOTIFICACAO_META = {
+  solicitacao_aberta_oficina: {
+    icon: '🆕',
+    label: 'Abertura',
+    tone: 'blue',
+  },
+  novo_caso_pos_venda: {
+    icon: '📄',
+    label: 'Pronto para Pós-venda',
+    tone: 'teal',
+  },
+  pendencia_assinatura_diretoria: {
+    icon: '✍️',
+    label: 'Pendente da Diretoria',
+    tone: 'amber',
+  },
+  pronto_impressao_finalizacao: {
+    icon: '🖨️',
+    label: 'Impressão e Finalização',
+    tone: 'green',
+  },
+  default: {
+    icon: '🔔',
+    label: 'Atualização',
+    tone: 'neutral',
+  },
+}
+
 const PAGE_META = [
   {
     test: (path) => path === '/',
@@ -76,6 +104,10 @@ function getInitials(nome) {
     return parts[0].slice(0, 2).toUpperCase()
   }
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
+function getNotificacaoMeta(tipo) {
+  return NOTIFICACAO_META[tipo] || NOTIFICACAO_META.default
 }
 
 function SidebarItem({ to, icon, label, active, disabled }) {
@@ -431,15 +463,25 @@ export default function Layout({ children }) {
                     <div className="dp-notif-empty">Nenhum aviso para este setor no momento.</div>
                   ) : (
                     <div className="dp-notif-list">
-                      {notificacoes.map((notificacao) => (
+                      {notificacoes.map((notificacao) => {
+                        const meta = getNotificacaoMeta(notificacao.tipo)
+                        return (
                         <article
                           key={notificacao.id}
-                          className={`dp-notif-item ${notificacao.lida ? 'is-read' : 'is-unread'}`}
+                          className={`dp-notif-item ${notificacao.lida ? 'is-read' : 'is-unread'} tone-${meta.tone}`}
                         >
                           <div className="dp-notif-item-head">
-                            <strong>{notificacao.titulo}</strong>
+                            <div className="dp-notif-item-title-wrap">
+                              <span className={`dp-notif-type type-${meta.tone}`}>
+                                <span>{meta.icon}</span> {meta.label}
+                              </span>
+                              <strong>{notificacao.titulo}</strong>
+                            </div>
                             {!notificacao.lida && <span className="dp-notif-pill">Novo</span>}
                           </div>
+                          {notificacao.case_id && (
+                            <div className="dp-notif-case">Caso #{notificacao.case_id}</div>
+                          )}
                           <p className="dp-notif-item-msg">{notificacao.mensagem}</p>
                           <div className="dp-notif-item-meta">
                             {formatApiDateTimeBR(notificacao.criado_em)}
@@ -466,7 +508,8 @@ export default function Layout({ children }) {
                             )}
                           </div>
                         </article>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>

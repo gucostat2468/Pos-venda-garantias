@@ -18,6 +18,12 @@ export function AuthProvider({ children }) {
       setUser(data.usuario)
       return { ok: true }
     } catch (err) {
+      if (!err.response) {
+        return {
+          ok: false,
+          message: 'Backend indisponível. Verifique se a API está rodando em http://localhost:8000.',
+        }
+      }
       return { ok: false, message: err.response?.data?.detail || 'Erro ao fazer login' }
     } finally {
       setLoading(false)
