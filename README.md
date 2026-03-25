@@ -97,6 +97,7 @@ Observações:
 |--------|-------|-------|
 | admin@dronepro | admin123 | Administrador |
 | operador@dronepro | operador123 | Time Oficina |
+| operadormarabá@dronepro | operador123 | Time Oficina (Marabá) |
 | gerente@dronepro | gerente123 | Gerente Pós-venda |
 | diretor@dronepro | diretor123 | Diretor Comercial |
 

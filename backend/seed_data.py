@@ -13,8 +13,21 @@ def seed_database():
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
     try:
-        # Só executa se não houver usuários
+        # Se já houver usuários, garante que os usuários padrão adicionais existam.
         if db.query(models.Usuario).count() > 0:
+            usuario_maraba = db.query(models.Usuario).filter(
+                models.Usuario.email == "operadormarabá@dronepro"
+            ).first()
+            if not usuario_maraba:
+                db.add(models.Usuario(
+                    nome="Operador Marabá",
+                    email="operadormarabá@dronepro",
+                    senha_hash=get_password_hash("operador123"),
+                    papel="operador",
+                    ativo=1,
+                ))
+                db.commit()
+                print("Usuário adicional criado: operadormarabá@dronepro / operador123")
             return
 
         print("Populando banco de dados com dados iniciais...")
@@ -30,6 +43,12 @@ def seed_database():
             models.Usuario(
                 nome="Time Oficina",
                 email="operador@dronepro",
+                senha_hash=get_password_hash("operador123"),
+                papel="operador"
+            ),
+            models.Usuario(
+                nome="Operador Marabá",
+                email="operadormarabá@dronepro",
                 senha_hash=get_password_hash("operador123"),
                 papel="operador"
             ),
@@ -140,6 +159,7 @@ def seed_database():
         print("\nUsuarios criados:")
         print("  admin@dronepro              / admin123     (Administrador)")
         print("  operador@dronepro           / operador123  (Time Oficina)")
+        print("  operadormarabá@dronepro     / operador123  (Time Oficina - Marabá)")
         print("  gerente@dronepro            / gerente123   (Vanier Afonso - Gerente Pós-venda)")
         print("  diretor@dronepro            / diretor123   (Marcus Lawder - Diretor Comercial)")
 
