@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 import models, schemas, auth as auth_utils
+from services.auditoria import registrar_evento_auditoria
 
 router = APIRouter()
 
@@ -83,15 +84,50 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
                     break
 
     if not user or not auth_utils.verify_password(request.senha, user.senha_hash):
+        registrar_evento_auditoria(
+            db,
+            acao="login_falhou",
+            modulo="auth",
+            descricao="Tentativa de login com credenciais inválidas.",
+            status="falha",
+            usuario_id=user.id if user else None,
+            entidade="usuario",
+            entidade_id=user.id if user else None,
+            detalhes={"login_informado": request.email},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Nome de usuário ou senha incorretos"
         )
     if not user.ativo:
+        registrar_evento_auditoria(
+            db,
+            acao="login_usuario_inativo",
+            modulo="auth",
+            descricao="Tentativa de login com usuário inativo.",
+            status="falha",
+            usuario_id=user.id,
+            entidade="usuario",
+            entidade_id=user.id,
+            detalhes={"login_informado": request.email},
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuário inativo. Contate o administrador."
         )
+    registrar_evento_auditoria(
+        db,
+        acao="login_realizado",
+        modulo="auth",
+        descricao="Login realizado com sucesso.",
+        usuario=user,
+        entidade="usuario",
+        entidade_id=user.id,
+        detalhes={"papel": user.papel},
+    )
+    db.commit()
     token = auth_utils.create_access_token({"sub": str(user.id)})
     return {
         "access_token": token,
@@ -112,7 +148,27 @@ def alterar_senha(
     db: Session = Depends(get_db)
 ):
     if not auth_utils.verify_password(body.senha_atual, current_user.senha_hash):
+        registrar_evento_auditoria(
+            db,
+            acao="alteracao_senha_falhou",
+            modulo="auth",
+            descricao="Tentativa de alteração de senha com senha atual inválida.",
+            status="falha",
+            usuario=current_user,
+            entidade="usuario",
+            entidade_id=current_user.id,
+        )
+        db.commit()
         raise HTTPException(status_code=400, detail="Senha atual incorreta")
     current_user.senha_hash = auth_utils.get_password_hash(body.nova_senha)
+    registrar_evento_auditoria(
+        db,
+        acao="senha_alterada",
+        modulo="auth",
+        descricao="Senha alterada pelo próprio usuário.",
+        usuario=current_user,
+        entidade="usuario",
+        entidade_id=current_user.id,
+    )
     db.commit()
     return {"message": "Senha alterada com sucesso"}

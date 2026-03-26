@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, date
 
 
@@ -222,6 +222,35 @@ class NotificacaoResumoOut(BaseModel):
 class NotificacaoMarcarTodasOut(BaseModel):
     message: str
     total: int
+
+
+# ─── Auditoria ───────────────────────────────────────────────────────────────
+
+class AuditoriaEventoOut(BaseModel):
+    id: int
+    usuario_id: Optional[int] = None
+    case_id: Optional[int] = None
+    acao: str
+    modulo: str
+    entidade: Optional[str] = None
+    entidade_id: Optional[int] = None
+    descricao: str
+    status: str
+    detalhes_json: Optional[str] = None
+    criado_em: Optional[datetime] = None
+    usuario: Optional[UsuarioOut] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AuditoriaResumoOut(BaseModel):
+    total: int
+    total_sucesso: int
+    total_falha: int
+    por_modulo: Dict[str, int]
+    por_acao: Dict[str, int]
+    ultimo_evento_em: Optional[datetime] = None
 
 
 # ─── Credito ─────────────────────────────────────────────────────────────────

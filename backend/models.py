@@ -18,6 +18,7 @@ class Usuario(Base):
     assinaturas = relationship("Assinatura", back_populates="usuario")
     documento_assinaturas = relationship("DocumentoAssinatura", back_populates="usuario")
     notificacoes = relationship("Notificacao", back_populates="usuario", cascade="all, delete-orphan")
+    auditoria_eventos = relationship("AuditoriaEvento", back_populates="usuario")
 
 
 class Cliente(Base):
@@ -126,6 +127,24 @@ class Notificacao(Base):
 
     usuario = relationship("Usuario", back_populates="notificacoes")
     caso = relationship("CasoGarantia", back_populates="notificacoes")
+
+
+class AuditoriaEvento(Base):
+    __tablename__ = "auditoria_eventos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    case_id = Column(Integer, nullable=True, index=True)
+    acao = Column(String(120), nullable=False, index=True)
+    modulo = Column(String(80), nullable=False, index=True)
+    entidade = Column(String(80), nullable=True, index=True)
+    entidade_id = Column(Integer, nullable=True, index=True)
+    descricao = Column(String(500), nullable=False)
+    status = Column(String(20), nullable=False, default="sucesso", index=True)
+    detalhes_json = Column(Text, nullable=True)
+    criado_em = Column(DateTime, default=func.now(), index=True)
+
+    usuario = relationship("Usuario", back_populates="auditoria_eventos")
 
 
 class CreditoExtrato(Base):

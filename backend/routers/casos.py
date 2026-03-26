@@ -21,6 +21,7 @@ from database import get_db
 import models, schemas
 from auth import get_current_user, get_current_user_download, require_roles
 from utils.pdf_compiler import compile_pdf
+from services.auditoria import gerar_diff, registrar_evento_auditoria
 
 router = APIRouter()
 
@@ -636,6 +637,25 @@ def criar_caso(
 
     caso = models.CasoGarantia(**body.model_dump())
     db.add(caso)
+    db.flush()
+    registrar_evento_auditoria(
+        db,
+        acao="caso_criado",
+        modulo="casos",
+        descricao=f"Caso {_codigo_caso(caso)} criado.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={
+            "tipo_processo": caso.tipo_processo,
+            "cliente_id": caso.cliente_id,
+            "produto_nome": caso.produto_nome,
+            "produto_modelo": caso.produto_modelo,
+            "produto_sn": caso.produto_sn,
+            "status_inicial": caso.status,
+        },
+    )
     db.commit()
     db.refresh(caso)
 
@@ -730,9 +750,42 @@ def atualizar_caso(
     caso = _load_caso(caso_id, db)
     if caso.status in STATUS_BLOQUEIA_EDICAO:
         raise HTTPException(status_code=400, detail="Caso em etapa final não pode ser editado")
+    before = {
+        "dji_case_id": caso.dji_case_id,
+        "tipo_processo": caso.tipo_processo,
+        "cliente_id": caso.cliente_id,
+        "produto_nome": caso.produto_nome,
+        "produto_modelo": caso.produto_modelo,
+        "produto_sn": caso.produto_sn,
+        "data_entrada": caso.data_entrada,
+        "observacoes": caso.observacoes,
+        "status_rebate": caso.status_rebate,
+    }
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(caso, field, value)
     caso.atualizado_em = datetime.utcnow()
+    after = {
+        "dji_case_id": caso.dji_case_id,
+        "tipo_processo": caso.tipo_processo,
+        "cliente_id": caso.cliente_id,
+        "produto_nome": caso.produto_nome,
+        "produto_modelo": caso.produto_modelo,
+        "produto_sn": caso.produto_sn,
+        "data_entrada": caso.data_entrada,
+        "observacoes": caso.observacoes,
+        "status_rebate": caso.status_rebate,
+    }
+    registrar_evento_auditoria(
+        db,
+        acao="caso_atualizado",
+        modulo="casos",
+        descricao=f"Caso {_codigo_caso(caso)} atualizado.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={"alteracoes": gerar_diff(before, after)},
+    )
     db.commit()
     return _load_caso(caso_id, db)
 
@@ -746,10 +799,26 @@ def deletar_caso(
     caso = db.query(models.CasoGarantia).filter(models.CasoGarantia.id == caso_id).first()
     if not caso:
         raise HTTPException(status_code=404, detail="Caso não encontrado")
+    codigo = _codigo_caso(caso)
     # Remover arquivos físicos
     case_dir = os.path.join(UPLOADS_DIR, str(caso_id))
     if os.path.exists(case_dir):
         shutil.rmtree(case_dir)
+    registrar_evento_auditoria(
+        db,
+        acao="caso_excluido",
+        modulo="casos",
+        descricao=f"Caso {codigo} excluído do sistema.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={
+            "status": caso.status,
+            "status_rebate": caso.status_rebate,
+            "cliente_id": caso.cliente_id,
+        },
+    )
     db.delete(caso)
     db.commit()
     return {"message": "Caso excluído com sucesso"}
@@ -772,6 +841,7 @@ async def upload_documento(
     caso = _load_caso(caso_id, db)
     if caso.status in STATUS_BLOQUEIA_EDICAO:
         raise HTTPException(status_code=400, detail="Caso em etapa final. Não é possível adicionar documentos.")
+    status_anterior = caso.status
 
     ext = Path(arquivo.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -797,6 +867,7 @@ async def upload_documento(
         models.Documento.case_id == caso_id,
         models.Documento.tipo_documento == tipo_documento
     ).first()
+    substituiu_documento = existing is not None
     if existing:
         _remover_assinaturas_documento(existing.id, db)
         if os.path.exists(existing.path_arquivo):
@@ -814,14 +885,35 @@ async def upload_documento(
         tamanho_bytes=len(content)
     )
     db.add(doc)
+    db.flush()
+    registrar_evento_auditoria(
+        db,
+        acao="documento_anexado" if not substituiu_documento else "documento_substituido",
+        modulo="casos_documentos",
+        descricao=(
+            f"Documento '{tipo_documento}' anexado no caso {_codigo_caso(caso)}."
+            if not substituiu_documento
+            else f"Documento '{tipo_documento}' substituído no caso {_codigo_caso(caso)}."
+        ),
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="documento",
+        entidade_id=doc.id,
+        detalhes={
+            "nome_arquivo": doc.nome_arquivo,
+            "tipo_documento": tipo_documento,
+            "tamanho_bytes": doc.tamanho_bytes,
+            "status_antes_upload": status_anterior,
+        },
+    )
 
     # Atualizar status para assinatura do gerente de pós-venda ao atingir documentação mínima
     db.commit()
     db.refresh(doc)
     caso_refreshed = _load_caso(caso_id, db)
-    status_anterior = caso_refreshed.status
+    status_pos_upload = caso_refreshed.status
     if _check_docs_completos(caso_refreshed):
-        if status_anterior == STATUS_AGUARDANDO_DOCUMENTOS:
+        if status_pos_upload == STATUS_AGUARDANDO_DOCUMENTOS:
             caso_refreshed.status = STATUS_AGUARDANDO_POS_VENDA
             codigo = _codigo_caso(caso_refreshed)
             _notificar_papel(
@@ -835,9 +927,31 @@ async def upload_documento(
                 ),
                 case_id=caso_refreshed.id,
             )
+            registrar_evento_auditoria(
+                db,
+                acao="caso_movido_para_pos_venda",
+                modulo="casos_fluxo",
+                descricao=f"Caso {codigo} avançou para assinatura do Pós-venda.",
+                usuario=current_user,
+                case_id=caso_refreshed.id,
+                entidade="caso_garantia",
+                entidade_id=caso_refreshed.id,
+                detalhes={"status_de": status_pos_upload, "status_para": caso_refreshed.status},
+            )
             db.commit()
-    elif status_anterior == STATUS_AGUARDANDO_POS_VENDA:
+    elif status_pos_upload == STATUS_AGUARDANDO_POS_VENDA:
         caso_refreshed.status = STATUS_AGUARDANDO_DOCUMENTOS
+        registrar_evento_auditoria(
+            db,
+            acao="caso_retrocedido_para_documentos",
+            modulo="casos_fluxo",
+            descricao=f"Caso {_codigo_caso(caso_refreshed)} voltou para etapa de documentos.",
+            usuario=current_user,
+            case_id=caso_refreshed.id,
+            entidade="caso_garantia",
+            entidade_id=caso_refreshed.id,
+            detalhes={"status_de": status_pos_upload, "status_para": caso_refreshed.status},
+        )
         db.commit()
 
     return doc
@@ -860,6 +974,7 @@ def download_documento(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
+    _load_caso(caso_id, db)
     doc = db.query(models.Documento).filter(
         models.Documento.id == doc_id,
         models.Documento.case_id == caso_id
@@ -903,12 +1018,34 @@ def download_documento(
                         status_code=500,
                         detail=f"Falha ao gerar PDF assinado para download: {exc}",
                     ) from exc
+            registrar_evento_auditoria(
+                db,
+                acao="documento_baixado",
+                modulo="casos_documentos",
+                descricao=f"Documento {doc.nome_arquivo} baixado.",
+                usuario=current_user,
+                case_id=caso_id,
+                entidade="documento",
+                entidade_id=doc.id,
+            )
+            db.commit()
             return Response(
                 content=pdf_assinado_bytes,
                 media_type="application/pdf",
                 headers={"Content-Disposition": f'attachment; filename="{doc.nome_arquivo}"'},
             )
 
+    registrar_evento_auditoria(
+        db,
+        acao="documento_baixado",
+        modulo="casos_documentos",
+        descricao=f"Documento {doc.nome_arquivo} baixado.",
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="documento",
+        entidade_id=doc.id,
+    )
+    db.commit()
     return FileResponse(doc.path_arquivo, filename=doc.nome_arquivo, media_type=doc.mime_type or "application/octet-stream")
 
 
@@ -1014,6 +1151,25 @@ def assinar_documento_individual(
                 detail=f"Falha ao persistir assinatura no documento PDF: {exc}",
             ) from exc
 
+    registrar_evento_auditoria(
+        db,
+        acao="assinatura_documento_registrada",
+        modulo="assinaturas",
+        descricao=(
+            f"Assinatura de {etapa} registrada no documento {doc.nome_arquivo} "
+            f"do caso {_codigo_caso(caso)}."
+        ),
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="documento_assinatura",
+        entidade_id=assinatura.id,
+        detalhes={
+            "documento_id": doc.id,
+            "documento_nome": doc.nome_arquivo,
+            "etapa_fluxo": etapa,
+            "assinatura_substituida": existing is not None,
+        },
+    )
     db.commit()
     db.refresh(assinatura)
     return assinatura
@@ -1029,6 +1185,7 @@ def deletar_documento(
     caso = _load_caso(caso_id, db)
     if caso.status in STATUS_BLOQUEIA_EDICAO:
         raise HTTPException(status_code=400, detail="Caso em etapa final.")
+    status_anterior = caso.status
 
     doc = db.query(models.Documento).filter(
         models.Documento.id == doc_id,
@@ -1042,6 +1199,9 @@ def deletar_documento(
     if os.path.exists(doc.path_arquivo):
         os.remove(doc.path_arquivo)
     _remover_backup_pdf_original(doc.path_arquivo)
+    doc_nome = doc.nome_arquivo
+    doc_tipo = doc.tipo_documento
+    doc_id_real = doc.id
     db.delete(doc)
     db.flush()
 
@@ -1049,6 +1209,23 @@ def deletar_documento(
     caso_db = _load_caso(caso_id, db)
     if caso_db.status != "Reprovado" and not _check_docs_completos(caso_db):
         caso_db.status = STATUS_AGUARDANDO_DOCUMENTOS
+
+    registrar_evento_auditoria(
+        db,
+        acao="documento_excluido",
+        modulo="casos_documentos",
+        descricao=f"Documento '{doc_tipo}' removido do caso {_codigo_caso(caso_db)}.",
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="documento",
+        entidade_id=doc_id_real,
+        detalhes={
+            "nome_arquivo": doc_nome,
+            "tipo_documento": doc_tipo,
+            "status_de": status_anterior,
+            "status_para": caso_db.status,
+        },
+    )
 
     db.commit()
     return {"message": "Documento removido"}
@@ -1064,6 +1241,7 @@ def assinar_caso(
     current_user: models.Usuario = Depends(get_current_user)
 ):
     caso = _load_caso(caso_id, db)
+    status_anterior = caso.status
 
     if body.status_decisao not in ["Aprovado", "Reprovado"]:
         raise HTTPException(status_code=400, detail="Decisão inválida. Use: Aprovado | Reprovado")
@@ -1091,6 +1269,7 @@ def assinar_caso(
             data_assinatura=datetime.utcnow()
         )
         db.add(assinatura)
+    db.flush()
 
     # Atualizar status do caso
     caso_db = db.query(models.CasoGarantia).filter(models.CasoGarantia.id == caso_id).first()
@@ -1131,6 +1310,27 @@ def assinar_caso(
             case_id=caso_id,
         )
 
+    registrar_evento_auditoria(
+        db,
+        acao="caso_assinado",
+        modulo="assinaturas",
+        descricao=(
+            f"{current_user.nome} registrou decisão '{body.status_decisao}' "
+            f"na etapa {etapa} do caso {codigo}."
+        ),
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="assinatura_caso",
+        entidade_id=assinatura.id if assinatura and assinatura.id else None,
+        detalhes={
+            "etapa_fluxo": etapa,
+            "decisao": body.status_decisao,
+            "observacao": body.observacao,
+            "status_de": status_anterior,
+            "status_para": caso_db.status,
+        },
+    )
+
     db.commit()
 
     # Compilar PDF quando aprovado por ambos para impressão em 3 vias
@@ -1155,6 +1355,7 @@ def confirmar_impressao_oficina(
 ):
     """Confirma impressão em 3 vias pela oficina e encerra o caso."""
     caso = _load_caso(caso_id, db)
+    status_anterior = caso.status
     if caso.status != STATUS_AGUARDANDO_IMPRESSAO:
         raise HTTPException(
             status_code=400,
@@ -1184,6 +1385,22 @@ def confirmar_impressao_oficina(
     caso_db.status = "Finalizado"
     caso_db.atualizado_em = datetime.utcnow()
     caso_db.status_rebate = "Finalizado"
+    registrar_evento_auditoria(
+        db,
+        acao="caso_finalizado_impressao",
+        modulo="casos_fluxo",
+        descricao=f"Caso {_codigo_caso(caso)} impresso e finalizado pela oficina.",
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="caso_garantia",
+        entidade_id=caso_id,
+        detalhes={
+            "status_de": status_anterior,
+            "status_para": caso_db.status,
+            "status_rebate_para": caso_db.status_rebate,
+            "pdf_compilado_path": pdf_path,
+        },
+    )
     db.commit()
 
     return _load_caso(caso_id, db)
@@ -1198,6 +1415,7 @@ async def upload_video_descarte(
 ):
     """Upload do vídeo de descarte para casos de bateria (etapa após aprovação diretoria)."""
     caso = _load_caso(caso_id, db)
+    status_anterior = caso.status
     if caso.status != "Aguardando Vídeo Descarte":
         raise HTTPException(
             status_code=400,
@@ -1232,6 +1450,22 @@ async def upload_video_descarte(
     caso_db.status = "Finalizado"
     caso_db.status_rebate = "Finalizado"
     caso_db.atualizado_em = datetime.utcnow()
+    db.flush()
+    registrar_evento_auditoria(
+        db,
+        acao="video_descarte_anexado",
+        modulo="casos_documentos",
+        descricao=f"Vídeo de descarte anexado e caso {_codigo_caso(caso)} finalizado.",
+        usuario=current_user,
+        case_id=caso_id,
+        entidade="documento",
+        entidade_id=doc.id,
+        detalhes={
+            "nome_arquivo": doc.nome_arquivo,
+            "status_de": status_anterior,
+            "status_para": caso_db.status,
+        },
+    )
     db.commit()
 
     # Compilar PDF
@@ -1265,6 +1499,18 @@ def compilar_pdf_manual(
         result_path = _compilar_pdf(caso, db)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Erro ao compilar PDF: {exc}") from exc
+    registrar_evento_auditoria(
+        db,
+        acao="dossie_recompilado_manual",
+        modulo="casos_pdf",
+        descricao=f"Dossiê do caso {_codigo_caso(caso)} recompilado manualmente.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={"pdf_compilado_path": result_path},
+    )
+    db.commit()
     return {"message": "PDF compilado com sucesso", "path": result_path}
 
 
@@ -1289,6 +1535,18 @@ def download_pdf_compilado(
 
     if not caso.link_pdf_compilado or not os.path.exists(caso.link_pdf_compilado):
         raise HTTPException(status_code=404, detail="PDF compilado não disponível")
+    registrar_evento_auditoria(
+        db,
+        acao="dossie_baixado",
+        modulo="casos_pdf",
+        descricao=f"Dossiê compilado do caso {_codigo_caso(caso)} baixado.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={"pdf_compilado_path": caso.link_pdf_compilado},
+    )
+    db.commit()
     filename = f"dossie_garantia_{caso.dji_case_id or caso.id}.pdf"
     return FileResponse(caso.link_pdf_compilado, filename=filename, media_type="application/pdf")
 

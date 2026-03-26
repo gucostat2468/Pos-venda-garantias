@@ -15,6 +15,7 @@ Plataforma web para centralizar e formalizar o processo de aprovação de garant
 - **Fluxo de aprovação em 2 etapas**: Gerente de Pós-venda → Diretor Comercial
 - **Suporte a Garantia de Peças e Garantia de Baterias**
 - **Controle de rebates** com status de apuração mensal
+- **Trilha de auditoria de governança** para registrar ações críticas (login, casos, documentos, assinaturas, impressão/finalização, clientes, usuários e crédito)
 - **4 perfis de acesso**: Admin, Time Oficina, Gerente Pós-venda, Diretor Comercial
 
 ---
@@ -184,6 +185,8 @@ Documentação interativa disponível em: **http://localhost:8000/docs**
 | GET | /api/casos/{id}/pdf | Baixar dossiê PDF |
 | GET | /api/clientes | Listar clientes |
 | GET | /api/usuarios | Listar usuários (admin) |
+| GET | /api/auditoria | Consultar eventos de governança |
+| GET | /api/auditoria/resumo | Resumo consolidado dos eventos |
 
 ---
 

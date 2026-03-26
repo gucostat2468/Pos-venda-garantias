@@ -13,6 +13,7 @@ from auth import get_current_user, get_current_user_download, require_roles
 from database import get_db
 from services.credito_ingest import sync_credito_files_to_db
 from services.credito_reconcile import reconcile_credito_to_cases
+from services.auditoria import registrar_evento_auditoria
 
 
 router = APIRouter()
@@ -69,6 +70,19 @@ def sincronizar_planilhas_credito(
 ):
     sync_summary = sync_credito_files_to_db(db, CREDITO_DIR)
     reconcile_summary = reconcile_credito_to_cases(db)
+    registrar_evento_auditoria(
+        db,
+        acao="credito_sync",
+        modulo="credito",
+        descricao="Sincronização de planilhas de crédito executada.",
+        usuario=current_user,
+        entidade="credito",
+        detalhes={
+            "sync": sync_summary,
+            "reconciliacao": reconcile_summary,
+        },
+    )
+    db.commit()
     return {
         "sync": sync_summary,
         "reconciliacao": reconcile_summary,
@@ -80,7 +94,18 @@ def reconciliar_credito_com_casos(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(require_roles("admin", "operador")),
 ):
-    return reconcile_credito_to_cases(db)
+    reconcile_summary = reconcile_credito_to_cases(db)
+    registrar_evento_auditoria(
+        db,
+        acao="credito_reconciliacao",
+        modulo="credito",
+        descricao="Reconciliação de crédito com casos executada.",
+        usuario=current_user,
+        entidade="credito",
+        detalhes={"reconciliacao": reconcile_summary},
+    )
+    db.commit()
+    return reconcile_summary
 
 
 @router.get("/extratos", response_model=List[schemas.CreditoExtratoOut])

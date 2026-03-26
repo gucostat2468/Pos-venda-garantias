@@ -45,3 +45,30 @@ def run_sqlite_migrations(engine) -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notificacoes_lida ON notificacoes(lida)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notificacoes_criado_em ON notificacoes(criado_em)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notificacoes_tipo ON notificacoes(tipo)"))
+
+        if not _table_exists(conn, "auditoria_eventos"):
+            conn.execute(text("""
+                CREATE TABLE auditoria_eventos (
+                    id INTEGER PRIMARY KEY,
+                    usuario_id INTEGER,
+                    case_id INTEGER,
+                    acao VARCHAR(120) NOT NULL,
+                    modulo VARCHAR(80) NOT NULL,
+                    entidade VARCHAR(80),
+                    entidade_id INTEGER,
+                    descricao VARCHAR(500) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'sucesso',
+                    detalhes_json TEXT,
+                    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
+                )
+            """))
+
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_usuario_id ON auditoria_eventos(usuario_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_case_id ON auditoria_eventos(case_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_acao ON auditoria_eventos(acao)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_modulo ON auditoria_eventos(modulo)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_entidade ON auditoria_eventos(entidade)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_entidade_id ON auditoria_eventos(entidade_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_status ON auditoria_eventos(status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_criado_em ON auditoria_eventos(criado_em)"))

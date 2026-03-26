@@ -4,6 +4,7 @@ from typing import List
 from database import get_db
 import models, schemas
 from auth import get_current_user, get_password_hash, require_roles
+from services.auditoria import gerar_diff, registrar_evento_auditoria
 
 router = APIRouter()
 
@@ -37,6 +38,21 @@ def criar_usuario(
         papel=body.papel
     )
     db.add(usuario)
+    db.flush()
+    registrar_evento_auditoria(
+        db,
+        acao="usuario_criado",
+        modulo="usuarios",
+        descricao=f"Usuário {usuario.email} criado.",
+        usuario=current_user,
+        entidade="usuario",
+        entidade_id=usuario.id,
+        detalhes={
+            "nome": usuario.nome,
+            "email": usuario.email,
+            "papel": usuario.papel,
+        },
+    )
     db.commit()
     db.refresh(usuario)
     return usuario
@@ -66,8 +82,31 @@ def atualizar_usuario(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if body.papel and body.papel not in PAPEIS_VALIDOS:
         raise HTTPException(status_code=400, detail=f"Papel inválido")
+
+    before = {
+        "nome": usuario.nome,
+        "email": usuario.email,
+        "papel": usuario.papel,
+        "ativo": usuario.ativo,
+    }
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(usuario, field, value)
+    after = {
+        "nome": usuario.nome,
+        "email": usuario.email,
+        "papel": usuario.papel,
+        "ativo": usuario.ativo,
+    }
+    registrar_evento_auditoria(
+        db,
+        acao="usuario_atualizado",
+        modulo="usuarios",
+        descricao=f"Usuário {usuario.email} atualizado.",
+        usuario=current_user,
+        entidade="usuario",
+        entidade_id=usuario.id,
+        detalhes={"alteracoes": gerar_diff(before, after)},
+    )
     db.commit()
     db.refresh(usuario)
     return usuario
@@ -85,6 +124,15 @@ def desativar_usuario(
     if usuario.id == current_user.id:
         raise HTTPException(status_code=400, detail="Você não pode desativar sua própria conta")
     usuario.ativo = 0
+    registrar_evento_auditoria(
+        db,
+        acao="usuario_desativado",
+        modulo="usuarios",
+        descricao=f"Usuário {usuario.email} desativado.",
+        usuario=current_user,
+        entidade="usuario",
+        entidade_id=usuario.id,
+    )
     db.commit()
     return {"message": "Usuário desativado"}
 
@@ -103,5 +151,14 @@ def reset_senha(
     if not nova_senha or len(nova_senha) < 6:
         raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
     usuario.senha_hash = get_password_hash(nova_senha)
+    registrar_evento_auditoria(
+        db,
+        acao="usuario_reset_senha",
+        modulo="usuarios",
+        descricao=f"Senha do usuário {usuario.email} redefinida por administrador.",
+        usuario=current_user,
+        entidade="usuario",
+        entidade_id=usuario.id,
+    )
     db.commit()
     return {"message": "Senha redefinida com sucesso"}
