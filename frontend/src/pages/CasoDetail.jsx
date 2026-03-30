@@ -7,7 +7,7 @@ import useMediaQuery from '../hooks/useMediaQuery'
 import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
 import { abrirImpressaoPdf } from '../utils/print'
 import { formatApiDateTimeBR } from '../utils/datetime'
-import { downloadBlob, extractFilenameFromHeaders, openBlobInTab } from '../utils/file'
+import { downloadBlob, extractFilenameFromHeaders } from '../utils/file'
 
 const DOCS_FLUXO_OFICINA = [
   {
@@ -375,30 +375,14 @@ export default function CasoDetail() {
   const handleAbrirDocumento = async (doc) => {
     if (!doc) return
     setDownloadingDocs(prev => ({ ...prev, [doc.id]: true }))
-    const tabPreAberta = window.open('', '_blank')
-    const fallback = doc?.nome_arquivo || `documento_${doc.id}`
-
     try {
-      const inlineRes = await casosAPI.downloadDocumentoFile(id, doc.id, { disposition: 'inline' })
-      const abriuInline = openBlobInTab(inlineRes.data, tabPreAberta)
-      if (!abriuInline) {
-        const filename = extractFilenameFromHeaders(inlineRes.headers, fallback)
-        downloadBlob(inlineRes.data, filename)
+      const viewerUrl = `/documento-viewer?caseId=${encodeURIComponent(id)}&docId=${encodeURIComponent(doc.id)}`
+      const opened = window.open(viewerUrl, '_blank')
+      if (!opened) {
+        await handleDownloadDocumento(doc)
       }
-    } catch {
-      try {
-        const attachmentRes = await casosAPI.downloadDocumentoFile(id, doc.id, { disposition: 'attachment' })
-        const abriuAttachment = openBlobInTab(attachmentRes.data, tabPreAberta)
-        if (!abriuAttachment) {
-          const filename = extractFilenameFromHeaders(attachmentRes.headers, fallback)
-          downloadBlob(attachmentRes.data, filename)
-        }
-      } catch (err) {
-        if (tabPreAberta && !tabPreAberta.closed) {
-          tabPreAberta.close()
-        }
-        alert(err.response?.data?.detail || 'Erro ao abrir documento')
-      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Erro ao abrir documento')
     } finally {
       setDownloadingDocs(prev => ({ ...prev, [doc.id]: false }))
     }
@@ -412,10 +396,6 @@ export default function CasoDetail() {
   }
 
   const abrirDocumentoPendenteEmTelaCheia = () => {
-    if (previewDocUrl) {
-      const openedTab = window.open(previewDocUrl, '_blank')
-      if (openedTab) return
-    }
     if (documentoAtualAssinatura) {
       handleAbrirDocumento(documentoAtualAssinatura)
     }
@@ -1012,7 +992,17 @@ export default function CasoDetail() {
                         }}
                       >
                         <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{idx + 1}. {doc.nome_arquivo}</span>
-                        <strong>{done ? 'Assinado' : 'Pendente'}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleAbrirDocumento(doc)}
+                            disabled={!!downloadingDocs[doc.id]}
+                            style={s.docDownBtn}
+                          >
+                            {downloadingDocs[doc.id] ? 'Abrindo...' : 'Abrir'}
+                          </button>
+                          <strong>{done ? 'Assinado' : 'Pendente'}</strong>
+                        </div>
                       </div>
                     )
                   })}

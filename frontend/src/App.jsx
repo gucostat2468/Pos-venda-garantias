@@ -11,6 +11,7 @@ import Clientes from './pages/Clientes'
 import Usuarios from './pages/Usuarios'
 import CreditoArquivos from './pages/CreditoArquivos'
 import ImpressaoFinalizacao from './pages/ImpressaoFinalizacao'
+import DocumentoViewer from './pages/DocumentoViewer'
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { user, isAdmin } = useAuth()
@@ -25,6 +26,12 @@ function PublicRoute({ children }) {
   return children
 }
 
+function AuthOnlyRoute({ children }) {
+  const { user } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  return children
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -33,6 +40,7 @@ function AppRoutes() {
       <Route path="/casos" element={<PrivateRoute><CasosList /></PrivateRoute>} />
       <Route path="/casos/novo" element={<PrivateRoute><NovoCaso /></PrivateRoute>} />
       <Route path="/casos/:id" element={<PrivateRoute><CasoDetail /></PrivateRoute>} />
+      <Route path="/documento-viewer" element={<AuthOnlyRoute><DocumentoViewer /></AuthOnlyRoute>} />
       <Route path="/impressao-finalizacao" element={<PrivateRoute><ImpressaoFinalizacao /></PrivateRoute>} />
       <Route path="/clientes" element={<PrivateRoute><Clientes /></PrivateRoute>} />
       <Route path="/credito" element={<PrivateRoute><CreditoArquivos /></PrivateRoute>} />
