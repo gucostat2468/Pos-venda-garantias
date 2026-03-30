@@ -5,9 +5,11 @@ import unicodedata
 import base64
 import binascii
 import io
+import mimetypes
 from datetime import datetime, date, timezone, timedelta
 from typing import List, Optional
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse, Response
@@ -91,6 +93,34 @@ def _categorizar_tipo_documento(tipo_documento: Optional[str]) -> str:
     if "remessa" in tipo:
         return "categoria_remessa"
     return "categoria_outros"
+
+
+def _mime_generico(mime_type: Optional[str]) -> bool:
+    valor = (mime_type or "").split(";")[0].strip().lower()
+    if not valor:
+        return True
+    return valor in {"application/octet-stream", "binary/octet-stream", "application/binary"}
+
+
+def _resolver_mime_type(
+    nome_arquivo: Optional[str],
+    path_arquivo: Optional[str],
+    mime_reportado: Optional[str],
+) -> str:
+    if not _mime_generico(mime_reportado):
+        return (mime_reportado or "").split(";")[0].strip().lower()
+    guessed = None
+    if nome_arquivo:
+        guessed = mimetypes.guess_type(nome_arquivo)[0]
+    if not guessed and path_arquivo:
+        guessed = mimetypes.guess_type(path_arquivo)[0]
+    return guessed or "application/octet-stream"
+
+
+def _content_disposition(filename: str, disposition: str) -> str:
+    safe_name = (filename or "arquivo").replace('"', "")
+    encoded_name = quote(safe_name)
+    return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{encoded_name}"
 
 
 def _check_docs_completos(caso: models.CasoGarantia) -> bool:
@@ -881,7 +911,7 @@ async def upload_documento(
         tipo_documento=tipo_documento,
         nome_arquivo=arquivo.filename,
         path_arquivo=file_path,
-        mime_type=arquivo.content_type,
+        mime_type=_resolver_mime_type(arquivo.filename, file_path, arquivo.content_type),
         tamanho_bytes=len(content)
     )
     db.add(doc)
@@ -971,6 +1001,7 @@ def listar_documentos(
 def download_documento(
     caso_id: int,
     doc_id: int,
+    disposition: str = Query("attachment", pattern="^(inline|attachment)$"),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
@@ -1032,7 +1063,7 @@ def download_documento(
             return Response(
                 content=pdf_assinado_bytes,
                 media_type="application/pdf",
-                headers={"Content-Disposition": f'attachment; filename="{doc.nome_arquivo}"'},
+                headers={"Content-Disposition": _content_disposition(doc.nome_arquivo, disposition)},
             )
 
     registrar_evento_auditoria(
@@ -1046,7 +1077,12 @@ def download_documento(
         entidade_id=doc.id,
     )
     db.commit()
-    return FileResponse(doc.path_arquivo, filename=doc.nome_arquivo, media_type=doc.mime_type or "application/octet-stream")
+    media_type = _resolver_mime_type(doc.nome_arquivo, doc.path_arquivo, doc.mime_type)
+    return FileResponse(
+        doc.path_arquivo,
+        media_type=media_type,
+        headers={"Content-Disposition": _content_disposition(doc.nome_arquivo, disposition)},
+    )
 
 
 @router.post("/{caso_id}/documentos/{doc_id}/assinar", response_model=schemas.DocumentoAssinaturaOut)
@@ -1441,7 +1477,7 @@ async def upload_video_descarte(
         tipo_documento="Vídeo de Descarte",
         nome_arquivo=arquivo.filename,
         path_arquivo=file_path,
-        mime_type=arquivo.content_type,
+        mime_type=_resolver_mime_type(arquivo.filename, file_path, arquivo.content_type),
         tamanho_bytes=len(content)
     )
     db.add(doc)
@@ -1517,6 +1553,7 @@ def compilar_pdf_manual(
 @router.get("/{caso_id}/pdf")
 def download_pdf_compilado(
     caso_id: int,
+    disposition: str = Query("attachment", pattern="^(inline|attachment)$"),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
@@ -1548,7 +1585,11 @@ def download_pdf_compilado(
     )
     db.commit()
     filename = f"dossie_garantia_{caso.dji_case_id or caso.id}.pdf"
-    return FileResponse(caso.link_pdf_compilado, filename=filename, media_type="application/pdf")
+    return FileResponse(
+        caso.link_pdf_compilado,
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition(filename, disposition)},
+    )
 
 
 # ─── Helpers Internos ─────────────────────────────────────────────────────────

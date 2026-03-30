@@ -50,7 +50,7 @@ export const casosAPI = {
   }),
   listarDocumentos: (id) => api.get(`/casos/${id}/documentos`),
   deletarDocumento: (caseId, docId) => api.delete(`/casos/${caseId}/documentos/${docId}`),
-  downloadDocumentoFile: (caseId, docId) => api.get(`/casos/${caseId}/documentos/${docId}/download`, { responseType: 'blob' }),
+  downloadDocumentoFile: (caseId, docId, params) => api.get(`/casos/${caseId}/documentos/${docId}/download`, { responseType: 'blob', params }),
   assinarDocumento: (caseId, docId, assinatura_data_url) => api.post(`/casos/${caseId}/documentos/${docId}/assinar`, { assinatura_data_url }),
   assinar: (id, data) => api.post(`/casos/${id}/assinar`, data),
   confirmarImpressao: (id) => api.post(`/casos/${id}/confirmar-impressao`),
@@ -59,7 +59,7 @@ export const casosAPI = {
     timeout: 300000,
   }),
   compilarPdf: (id) => api.post(`/casos/${id}/compilar-pdf`),
-  downloadPdfFile: (id) => api.get(`/casos/${id}/pdf`, { responseType: 'blob' }),
+  downloadPdfFile: (id, params) => api.get(`/casos/${id}/pdf`, { responseType: 'blob', params }),
   listarCreditoVinculos: (id) => api.get(`/casos/${id}/credito-vinculos`),
   obterCreditoResumo: (id) => api.get(`/casos/${id}/credito-resumo`),
 }
@@ -92,7 +92,7 @@ export const creditoAPI = {
   reconciliar: () => api.post('/credito/reconciliar'),
   listarVinculosCliente: () => api.get('/credito/cliente-vinculos'),
   listarVinculosCaso: (casoId) => api.get('/credito/caso-vinculos', { params: casoId ? { caso_id: casoId } : undefined }),
-  downloadArquivoFile: (caminhoRelativo) => api.get(`/credito/${encodePath(caminhoRelativo)}/download`, { responseType: 'blob' }),
+  downloadArquivoFile: (caminhoRelativo, params) => api.get(`/credito/${encodePath(caminhoRelativo)}/download`, { responseType: 'blob', params }),
 }
 
 // ─── Notificações ───────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import useMediaQuery from '../hooks/useMediaQuery'
 import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
 import { abrirImpressaoPdf } from '../utils/print'
 import { formatApiDateTimeBR } from '../utils/datetime'
+import { downloadBlob, extractFilenameFromHeaders, openBlobInTab } from '../utils/file'
 
 const DOCS_FLUXO_OFICINA = [
   {
@@ -87,6 +88,7 @@ export default function CasoDetail() {
   const [confirmandoImpressao, setConfirmandoImpressao] = useState(false)
   const [previewDocUrl, setPreviewDocUrl] = useState('')
   const [previewDocLoading, setPreviewDocLoading] = useState(false)
+  const [previewDocErro, setPreviewDocErro] = useState(false)
   const fileRefs = useRef({})
   const canvasRef = useRef(null)
   const isDrawingRef = useRef(false)
@@ -334,37 +336,20 @@ export default function CasoDetail() {
     }
   }
 
-  const extractFilename = (headers, fallback) => {
-    const contentDisposition = headers?.['content-disposition'] || ''
-    const utf8Match = contentDisposition.match(/filename\\*=UTF-8''([^;]+)/i)
-    if (utf8Match?.[1]) {
-      try {
-        return decodeURIComponent(utf8Match[1])
-      } catch {
-        return utf8Match[1]
-      }
-    }
-    const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
-    if (simpleMatch?.[1]) return simpleMatch[1]
-    return fallback
+  const scheduleRevokeObjectUrl = (url, delayMs = 120000) => {
+    if (!url) return
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(url)
+    }, delayMs)
   }
 
-  const downloadBlob = (blob, filename) => {
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-  }
+  const isPdfFilename = (filename) => String(filename || '').toLowerCase().endsWith('.pdf')
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true)
     try {
       const res = await casosAPI.downloadPdfFile(id)
-      const filename = extractFilename(res.headers, `dossie_garantia_${id}.pdf`)
+      const filename = extractFilenameFromHeaders(res.headers, `dossie_garantia_${id}.pdf`)
       downloadBlob(res.data, filename)
     } catch (err) {
       alert(err.response?.data?.detail || 'Erro ao baixar PDF')
@@ -376,12 +361,44 @@ export default function CasoDetail() {
   const handleDownloadDocumento = async (doc) => {
     setDownloadingDocs(prev => ({ ...prev, [doc.id]: true }))
     try {
-      const res = await casosAPI.downloadDocumentoFile(id, doc.id)
+      const res = await casosAPI.downloadDocumentoFile(id, doc.id, { disposition: 'attachment' })
       const fallback = doc?.nome_arquivo || `documento_${doc.id}`
-      const filename = extractFilename(res.headers, fallback)
+      const filename = extractFilenameFromHeaders(res.headers, fallback)
       downloadBlob(res.data, filename)
     } catch (err) {
       alert(err.response?.data?.detail || 'Erro ao baixar documento')
+    } finally {
+      setDownloadingDocs(prev => ({ ...prev, [doc.id]: false }))
+    }
+  }
+
+  const handleAbrirDocumento = async (doc) => {
+    if (!doc) return
+    setDownloadingDocs(prev => ({ ...prev, [doc.id]: true }))
+    const tabPreAberta = window.open('', '_blank')
+    const fallback = doc?.nome_arquivo || `documento_${doc.id}`
+
+    try {
+      const inlineRes = await casosAPI.downloadDocumentoFile(id, doc.id, { disposition: 'inline' })
+      const abriuInline = openBlobInTab(inlineRes.data, tabPreAberta)
+      if (!abriuInline) {
+        const filename = extractFilenameFromHeaders(inlineRes.headers, fallback)
+        downloadBlob(inlineRes.data, filename)
+      }
+    } catch {
+      try {
+        const attachmentRes = await casosAPI.downloadDocumentoFile(id, doc.id, { disposition: 'attachment' })
+        const abriuAttachment = openBlobInTab(attachmentRes.data, tabPreAberta)
+        if (!abriuAttachment) {
+          const filename = extractFilenameFromHeaders(attachmentRes.headers, fallback)
+          downloadBlob(attachmentRes.data, filename)
+        }
+      } catch (err) {
+        if (tabPreAberta && !tabPreAberta.closed) {
+          tabPreAberta.close()
+        }
+        alert(err.response?.data?.detail || 'Erro ao abrir documento')
+      }
     } finally {
       setDownloadingDocs(prev => ({ ...prev, [doc.id]: false }))
     }
@@ -392,6 +409,16 @@ export default function CasoDetail() {
     setAssinaObs('')
     setAssinaturaDocStep(0)
     setAssinaModal(true)
+  }
+
+  const abrirDocumentoPendenteEmTelaCheia = () => {
+    if (previewDocUrl) {
+      const openedTab = window.open(previewDocUrl, '_blank')
+      if (openedTab) return
+    }
+    if (documentoAtualAssinatura) {
+      handleAbrirDocumento(documentoAtualAssinatura)
+    }
   }
 
   const autoSignRequested = searchParams.get('assinar') === '1'
@@ -413,6 +440,7 @@ export default function CasoDetail() {
   const documentoAtualAssinatura = documentosPendentesAssinatura[
     Math.min(assinaturaDocStep, Math.max(documentosPendentesAssinatura.length - 1, 0))
   ] || null
+  const documentoAtualEhPdf = isPdfFilename(documentoAtualAssinatura?.nome_arquivo)
   const papelAssinaturaLabel = etapaAssinaturaAtual === 'Pos-venda' ? 'Gerente Pós-venda' : 'Diretor Comercial'
 
   useEffect(() => {
@@ -426,6 +454,13 @@ export default function CasoDetail() {
     if (!assinaModal || !documentoAtualAssinatura) {
       setPreviewDocUrl('')
       setPreviewDocLoading(false)
+      setPreviewDocErro(false)
+      return undefined
+    }
+    if (isMobile && documentoAtualEhPdf) {
+      setPreviewDocUrl('')
+      setPreviewDocLoading(false)
+      setPreviewDocErro(false)
       return undefined
     }
 
@@ -434,17 +469,25 @@ export default function CasoDetail() {
 
     const carregarPreview = async () => {
       setPreviewDocLoading(true)
+      setPreviewDocErro(false)
       try {
-        const res = await casosAPI.downloadDocumentoFile(id, documentoAtualAssinatura.id)
+        const res = await casosAPI.downloadDocumentoFile(
+          id,
+          documentoAtualAssinatura.id,
+          { disposition: 'inline' }
+        )
         objectUrl = window.URL.createObjectURL(res.data)
         if (isActive) {
           setPreviewDocUrl(objectUrl)
         } else {
-          window.URL.revokeObjectURL(objectUrl)
+          scheduleRevokeObjectUrl(objectUrl)
         }
       } catch (err) {
         console.error(err)
-        if (isActive) setPreviewDocUrl('')
+        if (isActive) {
+          setPreviewDocUrl('')
+          setPreviewDocErro(true)
+        }
       } finally {
         if (isActive) setPreviewDocLoading(false)
       }
@@ -455,10 +498,10 @@ export default function CasoDetail() {
     return () => {
       isActive = false
       if (objectUrl) {
-        window.URL.revokeObjectURL(objectUrl)
+        scheduleRevokeObjectUrl(objectUrl)
       }
     }
-  }, [assinaModal, id, documentoAtualAssinatura?.id])
+  }, [assinaModal, id, documentoAtualAssinatura?.id, isMobile, documentoAtualEhPdf])
 
   if (loading) return <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-muted)' }}>Carregando...</div>
   if (!caso) return <div style={{ textAlign: 'center', padding: 80 }}>Caso não encontrado. <Link to="/casos">Voltar</Link></div>
@@ -699,11 +742,11 @@ export default function CasoDetail() {
                   {doc && (
                     <button
                       type="button"
-                      onClick={() => handleDownloadDocumento(doc)}
+                      onClick={() => handleAbrirDocumento(doc)}
                       disabled={!!downloadingDocs[doc.id]}
                       style={s.docDownBtn}
                     >
-                      {downloadingDocs[doc.id] ? '...' : '⬇ Baixar'}
+                      {downloadingDocs[doc.id] ? 'Abrindo...' : 'Abrir'}
                     </button>
                   )}
                   {canManageOfficeDocs && (
@@ -753,11 +796,11 @@ export default function CasoDetail() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
-                    onClick={() => handleDownloadDocumento(doc)}
+                    onClick={() => handleAbrirDocumento(doc)}
                     disabled={!!downloadingDocs[doc.id]}
                     style={s.docDownBtn}
                   >
-                    {downloadingDocs[doc.id] ? '...' : '⬇ Baixar'}
+                    {downloadingDocs[doc.id] ? 'Abrindo...' : 'Abrir'}
                   </button>
                 </div>
                 </div>
@@ -892,16 +935,36 @@ export default function CasoDetail() {
                       Documento pendente: <strong>{documentoAtualAssinatura.nome_arquivo}</strong>
                     </div>
                     <div style={s.signDocViewer}>
+                      <div style={s.previewActions}>
+                        <button type="button" onClick={abrirDocumentoPendenteEmTelaCheia} style={s.previewOpenBtn}>
+                          Abrir em tela cheia
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadDocumento(documentoAtualAssinatura)}
+                          style={s.docDownBtn}
+                        >
+                          ⬇ Baixar
+                        </button>
+                      </div>
                       {previewDocLoading ? (
                         <div style={s.previewLoading}>Carregando preview do documento...</div>
-                      ) : previewDocUrl ? (
+                      ) : previewDocUrl && !(isMobile && documentoAtualEhPdf) ? (
                         <iframe
                           title={`Documento ${documentoAtualAssinatura.nome_arquivo}`}
                           src={previewDocUrl}
                           style={{ ...s.signIframe, ...(isMobile ? s.signIframeMobile : {}) }}
                         />
+                      ) : isMobile && documentoAtualEhPdf ? (
+                        <div style={s.previewMobileHint}>
+                          No celular, use "Abrir em tela cheia" para visualizar o PDF sem interrupções.
+                        </div>
                       ) : (
-                        <div style={s.previewError}>Não foi possível carregar o preview. Baixe o documento para validar.</div>
+                        <div style={s.previewError}>
+                          {previewDocErro
+                            ? 'Pré-visualização indisponível neste dispositivo. Use "Abrir em tela cheia".'
+                            : 'Use "Abrir em tela cheia" para validar este documento.'}
+                        </div>
                       )}
                     </div>
 
@@ -1146,6 +1209,33 @@ const s = {
     padding: '18px 14px',
     fontSize: 13,
     color: 'var(--text-muted)',
+    textAlign: 'center',
+  },
+  previewActions: {
+    display: 'flex',
+    gap: 8,
+    justifyContent: 'flex-end',
+    padding: '8px 10px 0',
+    flexWrap: 'wrap',
+  },
+  previewOpenBtn: {
+    padding: '5px 10px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: '#fff',
+    fontSize: 12,
+    color: 'var(--primary)',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  previewMobileHint: {
+    margin: '10px',
+    border: '1px solid #bfdbfe',
+    background: '#eff6ff',
+    borderRadius: 8,
+    padding: '12px 10px',
+    fontSize: 12,
+    color: '#1e3a8a',
     textAlign: 'center',
   },
   previewError: {

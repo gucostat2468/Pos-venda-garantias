@@ -1,9 +1,11 @@
 import hashlib
+import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import List
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -35,6 +37,12 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _content_disposition(filename: str, disposition: str) -> str:
+    safe_name = (filename or "arquivo").replace('"', "")
+    encoded_name = quote(safe_name)
+    return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{encoded_name}"
 
 
 @router.get("/", response_model=List[schemas.CreditoArquivoOut])
@@ -202,6 +210,7 @@ def listar_lancamentos_credito(
 @router.get("/{arquivo_path:path}/download")
 def download_arquivo_credito(
     arquivo_path: str,
+    disposition: str = Query("attachment", pattern="^(inline|attachment)$"),
     current_user: models.Usuario = Depends(get_current_user_download),
 ):
     rel = _safe_relative_path(arquivo_path)
@@ -209,8 +218,9 @@ def download_arquivo_credito(
     if not full_path.exists() or not full_path.is_file():
         raise HTTPException(status_code=404, detail="Arquivo nao encontrado")
 
+    media_type = mimetypes.guess_type(full_path.name)[0] or "application/octet-stream"
     return FileResponse(
         path=str(full_path),
-        filename=full_path.name,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=media_type,
+        headers={"Content-Disposition": _content_disposition(full_path.name, disposition)},
     )

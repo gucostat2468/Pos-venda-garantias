@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { creditoAPI } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import useMediaQuery from '../hooks/useMediaQuery'
+import { downloadBlob, extractFilenameFromHeaders } from '../utils/file'
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return '0 B'
@@ -42,32 +43,6 @@ export default function CreditoArquivos() {
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
   const [filtroLancamento, setFiltroLancamento] = useState('')
-
-  const extractFilename = (headers, fallback) => {
-    const contentDisposition = headers?.['content-disposition'] || ''
-    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
-    if (utf8Match?.[1]) {
-      try {
-        return decodeURIComponent(utf8Match[1])
-      } catch {
-        return utf8Match[1]
-      }
-    }
-    const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
-    if (simpleMatch?.[1]) return simpleMatch[1]
-    return fallback
-  }
-
-  const downloadBlob = (blob, filename) => {
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-  }
 
   const load = async () => {
     setLoading(true)
@@ -161,7 +136,7 @@ export default function CreditoArquivos() {
     try {
       const res = await creditoAPI.downloadArquivoFile(caminhoRelativo)
       const fallback = extratoSelecionado?.arquivo_nome || 'arquivo_credito.xlsx'
-      const filename = extractFilename(res.headers, fallback)
+      const filename = extractFilenameFromHeaders(res.headers, fallback)
       downloadBlob(res.data, filename)
     } catch (err) {
       alert(err?.response?.data?.detail || 'Erro ao baixar planilha')
