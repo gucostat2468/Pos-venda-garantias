@@ -110,8 +110,11 @@ Observações:
 
 ### Garantia de Peças
 1. Time Oficina cria o caso e anexa:
-   - Remessa (obrigatório)
-   - Nota Fiscal de remessa para garantia (opcional)
+   - Remessa DRONEPRO (Documento de separação dos itens no estoque) (obrigatório)
+   - Remessa HUADA (Documento de separação dos itens no estoque) (obrigatório)
+   - Caso de aprovação DJI (opcional)
+   - Nota Fiscal de remessa para garantia DRONEPRO (opcional)
+   - Nota Fiscal de remessa para garantia HUADA (opcional)
    - Relatório técnico (opcional)
 2. Sistema muda status automaticamente para **Aguardando Aprovação Pós-Venda**
 3. Gerente de Pós-venda assina (aprova ou reprova)

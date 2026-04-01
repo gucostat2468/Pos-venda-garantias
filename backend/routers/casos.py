@@ -34,11 +34,13 @@ COMPILED_DIR = os.path.join(BASE_DIR, "compiled")
 SIGNATURES_SUBDIR = "assinaturas"
 
 DOCS_OBRIGATORIOS = {
-    "categoria_remessa",
+    "categoria_remessa_dronepro",
+    "categoria_remessa_huada",
 }
 
 DOCS_OPCIONAIS = {
-    "categoria_nf_remessa",
+    "categoria_nf_remessa_dronepro",
+    "categoria_nf_remessa_huada",
     "categoria_relatorio_tecnico",
 }
 
@@ -86,12 +88,29 @@ def _categorizar_tipo_documento(tipo_documento: Optional[str]) -> str:
     tipo = _normalizar_texto(tipo_documento)
     if not tipo:
         return "categoria_outros"
+    if (
+        (("nota fiscal" in tipo and "remessa" in tipo) or "nf remessa" in tipo)
+        and "huada" in tipo
+    ):
+        return "categoria_nf_remessa_huada"
     if ("nota fiscal" in tipo and "remessa" in tipo) or "nf remessa" in tipo:
-        return "categoria_nf_remessa"
+        return "categoria_nf_remessa_dronepro"
+    if (
+        ("remessa" in tipo and "huada" in tipo)
+        or "nota huada" in tipo
+    ):
+        return "categoria_remessa_huada"
+    if (
+        ("remessa" in tipo and ("dronepro" in tipo or "drone pro" in tipo))
+        or "nota drone pro" in tipo
+        or "nota droneprop" in tipo
+        or "nota drone prop" in tipo
+    ):
+        return "categoria_remessa_dronepro"
     if "relatorio tecnico" in tipo:
         return "categoria_relatorio_tecnico"
     if "remessa" in tipo:
-        return "categoria_remessa"
+        return "categoria_remessa_dronepro"
     return "categoria_outros"
 
 
@@ -124,14 +143,17 @@ def _content_disposition(filename: str, disposition: str) -> str:
 
 
 def _check_docs_completos(caso: models.CasoGarantia) -> bool:
-    """Verifica se todos os documentos obrigatórios foram enviados."""
+    """Verifica se o documento obrigatório da etapa foi enviado."""
     categorias_enviadas = {_categorizar_tipo_documento(doc.tipo_documento) for doc in (caso.documentos or [])}
     return DOCS_OBRIGATORIOS.issubset(categorias_enviadas)
 
 
 def _documento_exige_assinatura(doc: models.Documento) -> bool:
-    """Somente a Remessa obrigatória exige assinatura de gerente e diretor."""
-    return _categorizar_tipo_documento(doc.tipo_documento) == "categoria_remessa"
+    """Somente as remessas obrigatórias (DronePro e Huada) exigem assinatura."""
+    return _categorizar_tipo_documento(doc.tipo_documento) in {
+        "categoria_remessa_dronepro",
+        "categoria_remessa_huada",
+    }
 
 
 def _documentos_assinaveis(caso: models.CasoGarantia) -> List[models.Documento]:
@@ -170,7 +192,7 @@ def _validar_assinaturas_documentos(caso: models.CasoGarantia, etapa: str, usuar
     if not docs:
         raise HTTPException(
             status_code=400,
-            detail="Não há Remessa obrigatória para assinatura neste caso.",
+            detail="Não há documentos obrigatórios de Remessa (DRONEPRO/HUADA) para assinatura neste caso.",
         )
 
     assinados_ids = {
@@ -182,7 +204,7 @@ def _validar_assinaturas_documentos(caso: models.CasoGarantia, etapa: str, usuar
     if pendentes:
         raise HTTPException(
             status_code=400,
-            detail=f"Assine a Remessa obrigatória antes de concluir a etapa. Pendente(s): {', '.join(pendentes)}"
+            detail=f"Assine as remessas obrigatórias (DRONEPRO e HUADA) antes de concluir a etapa. Pendente(s): {', '.join(pendentes)}"
         )
 
 
@@ -195,7 +217,7 @@ def _validar_documentos_assinados_por_etapas(
     if not docs:
         raise HTTPException(
             status_code=400,
-            detail="Não há Remessa obrigatória para assinatura neste caso.",
+            detail="Não há documentos obrigatórios de Remessa (DRONEPRO/HUADA) para assinatura neste caso.",
         )
 
     assinaturas_por_doc: dict[int, set[str]] = {}
@@ -217,7 +239,7 @@ def _validar_documentos_assinados_por_etapas(
     if pendencias:
         raise HTTPException(
             status_code=400,
-            detail=f"Fluxo bloqueado para {contexto}. A Remessa obrigatória deve estar assinada por todas as etapas exigidas. Pendências: {'; '.join(pendencias)}",
+            detail=f"Fluxo bloqueado para {contexto}. As remessas obrigatórias (DRONEPRO e HUADA) devem estar assinadas por todas as etapas exigidas. Pendências: {'; '.join(pendencias)}",
         )
 
 
@@ -690,7 +712,7 @@ def criar_caso(
     db.refresh(caso)
 
     # Notifica o gerente de pós-venda imediatamente quando uma nova solicitação é aberta
-    # pela oficina, mesmo antes do envio da remessa obrigatória.
+    # pela oficina, mesmo antes do envio das remessas obrigatórias.
     codigo = _codigo_caso(caso)
     _notificar_papel(
         db,
@@ -699,7 +721,7 @@ def criar_caso(
         titulo="Solicitação aberta pela oficina",
         mensagem=(
             f"{current_user.nome or 'Time Oficina'} abriu {codigo}. "
-            "Aguardando anexação da Remessa obrigatória para liberar a etapa de assinatura."
+            "Aguardando anexação das Remessas DRONEPRO e HUADA (obrigatórias) para liberar a etapa de assinatura."
         ),
         case_id=caso.id,
     )
@@ -952,7 +974,7 @@ async def upload_documento(
                 tipo="novo_caso_pos_venda",
                 titulo="Solicitação pronta para assinatura do Pós-venda",
                 mensagem=(
-                    f"{current_user.nome or 'Time Oficina'} anexou a Remessa obrigatória do {codigo}. "
+                    f"{current_user.nome or 'Time Oficina'} anexou as remessas obrigatórias do {codigo}. "
                     "Aguardando assinatura do Gerente de Pós-venda."
                 ),
                 case_id=caso_refreshed.id,
@@ -1106,7 +1128,7 @@ def assinar_documento_individual(
     if not _documento_exige_assinatura(doc):
         raise HTTPException(
             status_code=400,
-            detail="Somente o documento obrigatório de Remessa participa da assinatura documental.",
+            detail="Somente os documentos obrigatórios de Remessa (DRONEPRO/HUADA) participam da assinatura documental.",
         )
 
     prefix = "data:image/png;base64,"
@@ -1241,7 +1263,7 @@ def deletar_documento(
     db.delete(doc)
     db.flush()
 
-    # Regressar status se remover documento obrigatório mínimo (remessa)
+    # Regressar status se remover documento obrigatório mínimo (remessas DronePro/Huada)
     caso_db = _load_caso(caso_id, db)
     if caso_db.status != "Reprovado" and not _check_docs_completos(caso_db):
         caso_db.status = STATUS_AGUARDANDO_DOCUMENTOS

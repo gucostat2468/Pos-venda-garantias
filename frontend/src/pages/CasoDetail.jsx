@@ -11,16 +11,37 @@ import { downloadBlob, extractFilenameFromHeaders } from '../utils/file'
 
 const DOCS_FLUXO_OFICINA = [
   {
-    label: 'Remessa (Documento de separação dos itens no estoque)',
+    label: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+    tipo_documento: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
     obrigatorio: true,
     aliases: [
+      'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+      'Remessa DRONEPRO',
+      'Remessa DronePro',
       'Remessa (Documento de separação dos itens no estoque)',
       'Remessa (Pedido)',
       'Remessa',
+      'Nota Drone Pro',
+      'Nota drone pro',
+      'Nota Drone Prop',
+    ],
+  },
+  {
+    label: 'Remessa HUADA (Documento de separação dos itens no estoque)',
+    tipo_documento: 'Remessa HUADA (Documento de separação dos itens no estoque)',
+    obrigatorio: true,
+    aliases: [
+      'Remessa HUADA (Documento de separação dos itens no estoque)',
+      'Remessa HUADA',
+      'Remessa Huada',
+      'Remessa huada',
+      'Nota Huada',
+      'Nota huada',
     ],
   },
   {
     label: 'Caso de aprovação DJI',
+    tipo_documento: 'Caso de aprovação DJI',
     obrigatorio: false,
     aliases: [
       'Caso de aprovação DJI',
@@ -28,15 +49,29 @@ const DOCS_FLUXO_OFICINA = [
     ],
   },
   {
-    label: 'Nota Fiscal de Remessa para Garantia',
+    label: 'Nota Fiscal de remessa para garantia DRONEPRO',
+    tipo_documento: 'Nota Fiscal de remessa para garantia DRONEPRO',
     obrigatorio: false,
     aliases: [
+      'Nota Fiscal de remessa para garantia DRONEPRO',
+      'Nota Fiscal de Remessa para Garantia DRONEPRO',
       'Nota Fiscal de Remessa para Garantia',
       'NF Remessa',
     ],
   },
   {
+    label: 'Nota Fiscal de remessa para garantia HUADA',
+    tipo_documento: 'Nota Fiscal de remessa para garantia HUADA',
+    obrigatorio: false,
+    aliases: [
+      'Nota Fiscal de remessa para garantia HUADA',
+      'Nota Fiscal de Remessa para Garantia HUADA',
+      'NF Remessa HUADA',
+    ],
+  },
+  {
     label: 'Relatório Técnico',
+    tipo_documento: 'Relatório Técnico',
     obrigatorio: false,
     aliases: [
       'Relatório Técnico',
@@ -54,15 +89,38 @@ const normalizeText = (value) => String(value || '')
 const categorizarTipoDocumento = (tipoDocumento) => {
   const tipo = normalizeText(tipoDocumento)
   if (!tipo) return 'categoria_outros'
+  if (
+    ((tipo.includes('nota fiscal') && tipo.includes('remessa')) || tipo.includes('nf remessa'))
+    && tipo.includes('huada')
+  ) {
+    return 'categoria_nf_remessa_huada'
+  }
   if ((tipo.includes('nota fiscal') && tipo.includes('remessa')) || tipo.includes('nf remessa')) {
-    return 'categoria_nf_remessa'
+    return 'categoria_nf_remessa_dronepro'
+  }
+  if (
+    (tipo.includes('remessa') && tipo.includes('huada'))
+    || tipo.includes('nota huada')
+  ) {
+    return 'categoria_remessa_huada'
+  }
+  if (
+    (tipo.includes('remessa') && (tipo.includes('dronepro') || tipo.includes('drone pro')))
+    || tipo.includes('nota drone pro')
+    || tipo.includes('nota droneprop')
+    || tipo.includes('nota drone prop')
+  ) {
+    return 'categoria_remessa_dronepro'
   }
   if (tipo.includes('relatorio tecnico')) return 'categoria_relatorio_tecnico'
-  if (tipo.includes('remessa')) return 'categoria_remessa'
+  if (tipo.includes('remessa')) return 'categoria_remessa_dronepro'
   return 'categoria_outros'
 }
 
-const isDocumentoAssinavel = (doc) => categorizarTipoDocumento(doc?.tipo_documento) === 'categoria_remessa'
+const isDocumentoAssinavel = (doc) => {
+  const categoria = categorizarTipoDocumento(doc?.tipo_documento)
+  return categoria === 'categoria_remessa_dronepro' || categoria === 'categoria_remessa_huada'
+}
 
 export default function CasoDetail() {
   const isMobile = useMediaQuery('(max-width: 760px)')
@@ -697,7 +755,8 @@ export default function CasoDetail() {
           {docsObrigatorios.map((docConfig) => {
             const tipo = docConfig.label
             const doc = findDocumentoByAliases(docConfig.aliases)
-            const isUploading = uploading[tipo]
+            const uploadTipoDocumento = doc?.tipo_documento || docConfig.tipo_documento || tipo
+            const isUploading = uploading[uploadTipoDocumento]
             const assinaturaResumo = doc ? resumoAssinaturasDocumento(doc) : null
             return (
               <div key={tipo} style={{ ...s.docRow, ...(doc ? s.docRowDone : {}) }}>
@@ -737,8 +796,8 @@ export default function CasoDetail() {
                           type="file"
                           accept=".pdf,.jpg,.jpeg,.png,.gif"
                           style={{ display: 'none' }}
-                          ref={el => fileRefs.current[tipo] = el}
-                          onChange={e => handleUpload(tipo, e.target.files[0])}
+                          ref={el => fileRefs.current[uploadTipoDocumento] = el}
+                          onChange={e => handleUpload(uploadTipoDocumento, e.target.files[0])}
                           disabled={isUploading}
                         />
                       </label>

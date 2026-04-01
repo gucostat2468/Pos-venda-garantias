@@ -10,9 +10,31 @@ import { downloadBlob, extractFilenameFromHeaders } from '../utils/file'
 const DOCS_POR_TIPO = {
   Peca: [
     {
-      label: 'Remessa (Documento de separação dos itens no estoque)',
+      label: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
       obrigatorio: true,
-      aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+      aliases: [
+        'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+        'Remessa DRONEPRO',
+        'Remessa DronePro',
+        'Remessa (Documento de separação dos itens no estoque)',
+        'Remessa (Pedido)',
+        'Remessa',
+        'Nota Drone Pro',
+        'Nota drone pro',
+        'Nota Drone Prop',
+      ],
+    },
+    {
+      label: 'Remessa HUADA (Documento de separação dos itens no estoque)',
+      obrigatorio: true,
+      aliases: [
+        'Remessa HUADA (Documento de separação dos itens no estoque)',
+        'Remessa HUADA',
+        'Remessa Huada',
+        'Remessa huada',
+        'Nota Huada',
+        'Nota huada',
+      ],
     },
     {
       label: 'Caso de aprovação DJI',
@@ -20,9 +42,23 @@ const DOCS_POR_TIPO = {
       aliases: ['Caso de aprovação DJI', 'Caso de aprovacao DJI'],
     },
     {
-      label: 'Nota Fiscal de Remessa para Garantia',
+      label: 'Nota Fiscal de remessa para garantia DRONEPRO',
       obrigatorio: false,
-      aliases: ['Nota Fiscal de Remessa para Garantia', 'NF Remessa'],
+      aliases: [
+        'Nota Fiscal de remessa para garantia DRONEPRO',
+        'Nota Fiscal de Remessa para Garantia DRONEPRO',
+        'Nota Fiscal de Remessa para Garantia',
+        'NF Remessa',
+      ],
+    },
+    {
+      label: 'Nota Fiscal de remessa para garantia HUADA',
+      obrigatorio: false,
+      aliases: [
+        'Nota Fiscal de remessa para garantia HUADA',
+        'Nota Fiscal de Remessa para Garantia HUADA',
+        'NF Remessa HUADA',
+      ],
     },
     {
       label: 'Relatório Técnico',
@@ -32,9 +68,31 @@ const DOCS_POR_TIPO = {
   ],
   Bateria: [
     {
-      label: 'Remessa (Documento de separação dos itens no estoque)',
+      label: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
       obrigatorio: true,
-      aliases: ['Remessa (Documento de separação dos itens no estoque)', 'Remessa (Pedido)', 'Remessa'],
+      aliases: [
+        'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+        'Remessa DRONEPRO',
+        'Remessa DronePro',
+        'Remessa (Documento de separação dos itens no estoque)',
+        'Remessa (Pedido)',
+        'Remessa',
+        'Nota Drone Pro',
+        'Nota drone pro',
+        'Nota Drone Prop',
+      ],
+    },
+    {
+      label: 'Remessa HUADA (Documento de separação dos itens no estoque)',
+      obrigatorio: true,
+      aliases: [
+        'Remessa HUADA (Documento de separação dos itens no estoque)',
+        'Remessa HUADA',
+        'Remessa Huada',
+        'Remessa huada',
+        'Nota Huada',
+        'Nota huada',
+      ],
     },
     {
       label: 'Caso de aprovação DJI',
@@ -42,9 +100,23 @@ const DOCS_POR_TIPO = {
       aliases: ['Caso de aprovação DJI', 'Caso de aprovacao DJI'],
     },
     {
-      label: 'Nota Fiscal de Remessa para Garantia',
+      label: 'Nota Fiscal de remessa para garantia DRONEPRO',
       obrigatorio: false,
-      aliases: ['Nota Fiscal de Remessa para Garantia', 'NF Remessa'],
+      aliases: [
+        'Nota Fiscal de remessa para garantia DRONEPRO',
+        'Nota Fiscal de Remessa para Garantia DRONEPRO',
+        'Nota Fiscal de Remessa para Garantia',
+        'NF Remessa',
+      ],
+    },
+    {
+      label: 'Nota Fiscal de remessa para garantia HUADA',
+      obrigatorio: false,
+      aliases: [
+        'Nota Fiscal de remessa para garantia HUADA',
+        'Nota Fiscal de Remessa para Garantia HUADA',
+        'NF Remessa HUADA',
+      ],
     },
     {
       label: 'Relatório Técnico',
@@ -58,7 +130,7 @@ const FLOW_STEPS = [
   {
     id: 1,
     title: 'Time Oficina',
-    text: 'Abre o caso e anexa Remessa, NF de remessa (opcional) e Relatório técnico (opcional)',
+    text: 'Abre o caso e anexa as Remessas DRONEPRO e HUADA (obrigatórias) e os documentos opcionais da etapa',
   },
   {
     id: 2,

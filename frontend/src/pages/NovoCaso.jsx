@@ -6,9 +6,17 @@ import useMediaQuery from '../hooks/useMediaQuery'
 
 const DOCS_FLUXO_OFICINA = [
   {
-    key: 'remessa',
-    label: 'Remessa (Documento de separação dos itens no estoque)',
-    tipo_documento: 'Remessa (Documento de separação dos itens no estoque)',
+    key: 'remessa_dronepro',
+    label: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+    tipo_documento: 'Remessa DRONEPRO (Documento de separação dos itens no estoque)',
+    obrigatorio: true,
+    descricao: 'Obrigatório para liberar a etapa de assinatura.',
+    accept: '.pdf',
+  },
+  {
+    key: 'remessa_huada',
+    label: 'Remessa HUADA (Documento de separação dos itens no estoque)',
+    tipo_documento: 'Remessa HUADA (Documento de separação dos itens no estoque)',
     obrigatorio: true,
     descricao: 'Obrigatório para liberar a etapa de assinatura.',
     accept: '.pdf',
@@ -22,11 +30,19 @@ const DOCS_FLUXO_OFICINA = [
     accept: '.pdf',
   },
   {
-    key: 'nf_remessa',
-    label: 'Nota Fiscal de remessa para garantia',
-    tipo_documento: 'Nota Fiscal de Remessa para Garantia',
+    key: 'nf_remessa_dronepro',
+    label: 'Nota Fiscal de remessa para garantia DRONEPRO',
+    tipo_documento: 'Nota Fiscal de remessa para garantia DRONEPRO',
     obrigatorio: false,
-    descricao: 'Opcional, anexar quando houver nota fiscal emitida pelo sub-dealer.',
+    descricao: 'Opcional, anexar quando houver nota fiscal emitida pelo sub-dealer DRONEPRO.',
+    accept: '.pdf',
+  },
+  {
+    key: 'nf_remessa_huada',
+    label: 'Nota Fiscal de remessa para garantia HUADA',
+    tipo_documento: 'Nota Fiscal de remessa para garantia HUADA',
+    obrigatorio: false,
+    descricao: 'Opcional, anexar quando houver nota fiscal emitida pelo sub-dealer HUADA.',
     accept: '.pdf',
   },
   {
@@ -64,9 +80,11 @@ export default function NovoCaso() {
     observacoes: '',
   })
   const [docs, setDocs] = useState({
-    remessa: null,
+    remessa_dronepro: null,
+    remessa_huada: null,
     caso_aprovacao_dji: null,
-    nf_remessa: null,
+    nf_remessa_dronepro: null,
+    nf_remessa_huada: null,
     relatorio_tecnico: null,
   })
   const [loading, setLoading] = useState(false)
@@ -97,8 +115,11 @@ export default function NovoCaso() {
       setError('Selecione o cliente')
       return
     }
-    if (!docs.remessa) {
-      setError('Anexe a Remessa (obrigatória) para iniciar a esteira corretamente.')
+    const remessasObrigatoriasFaltantes = []
+    if (!docs.remessa_dronepro) remessasObrigatoriasFaltantes.push('Remessa DRONEPRO')
+    if (!docs.remessa_huada) remessasObrigatoriasFaltantes.push('Remessa HUADA')
+    if (remessasObrigatoriasFaltantes.length > 0) {
+      setError(`Anexe os documentos obrigatórios de remessa: ${remessasObrigatoriasFaltantes.join(' e ')}.`)
       return
     }
 
