@@ -143,13 +143,13 @@ def _content_disposition(filename: str, disposition: str) -> str:
 
 
 def _check_docs_completos(caso: models.CasoGarantia) -> bool:
-    """Verifica se o documento obrigatório da etapa foi enviado."""
+    """Verifica se há pelo menos uma remessa anexada para liberar assinatura."""
     categorias_enviadas = {_categorizar_tipo_documento(doc.tipo_documento) for doc in (caso.documentos or [])}
-    return DOCS_OBRIGATORIOS.issubset(categorias_enviadas)
+    return len(categorias_enviadas.intersection(DOCS_OBRIGATORIOS)) > 0
 
 
 def _documento_exige_assinatura(doc: models.Documento) -> bool:
-    """Somente as remessas obrigatórias (DronePro e Huada) exigem assinatura."""
+    """Toda remessa anexada (DronePro/Huada) exige assinatura no fluxo."""
     return _categorizar_tipo_documento(doc.tipo_documento) in {
         "categoria_remessa_dronepro",
         "categoria_remessa_huada",
@@ -192,7 +192,7 @@ def _validar_assinaturas_documentos(caso: models.CasoGarantia, etapa: str, usuar
     if not docs:
         raise HTTPException(
             status_code=400,
-            detail="Não há documentos obrigatórios de Remessa (DRONEPRO/HUADA) para assinatura neste caso.",
+            detail="Não há documento de Remessa anexado para assinatura neste caso.",
         )
 
     assinados_ids = {
@@ -204,7 +204,7 @@ def _validar_assinaturas_documentos(caso: models.CasoGarantia, etapa: str, usuar
     if pendentes:
         raise HTTPException(
             status_code=400,
-            detail=f"Assine as remessas obrigatórias (DRONEPRO e HUADA) antes de concluir a etapa. Pendente(s): {', '.join(pendentes)}"
+            detail=f"Assine todos os documentos de Remessa anexados antes de concluir a etapa. Pendente(s): {', '.join(pendentes)}"
         )
 
 
@@ -217,7 +217,7 @@ def _validar_documentos_assinados_por_etapas(
     if not docs:
         raise HTTPException(
             status_code=400,
-            detail="Não há documentos obrigatórios de Remessa (DRONEPRO/HUADA) para assinatura neste caso.",
+            detail="Não há documento de Remessa anexado para assinatura neste caso.",
         )
 
     assinaturas_por_doc: dict[int, set[str]] = {}
@@ -239,7 +239,7 @@ def _validar_documentos_assinados_por_etapas(
     if pendencias:
         raise HTTPException(
             status_code=400,
-            detail=f"Fluxo bloqueado para {contexto}. As remessas obrigatórias (DRONEPRO e HUADA) devem estar assinadas por todas as etapas exigidas. Pendências: {'; '.join(pendencias)}",
+            detail=f"Fluxo bloqueado para {contexto}. Todos os documentos de Remessa anexados devem estar assinados por todas as etapas exigidas. Pendências: {'; '.join(pendencias)}",
         )
 
 
@@ -712,7 +712,7 @@ def criar_caso(
     db.refresh(caso)
 
     # Notifica o gerente de pós-venda imediatamente quando uma nova solicitação é aberta
-    # pela oficina, mesmo antes do envio das remessas obrigatórias.
+    # pela oficina, mesmo antes do envio da primeira remessa.
     codigo = _codigo_caso(caso)
     _notificar_papel(
         db,
@@ -721,7 +721,7 @@ def criar_caso(
         titulo="Solicitação aberta pela oficina",
         mensagem=(
             f"{current_user.nome or 'Time Oficina'} abriu {codigo}. "
-            "Aguardando anexação das Remessas DRONEPRO e HUADA (obrigatórias) para liberar a etapa de assinatura."
+            "Aguardando anexação de pelo menos uma Remessa (DRONEPRO ou HUADA) para liberar a etapa de assinatura."
         ),
         case_id=caso.id,
     )
@@ -736,7 +736,13 @@ def obter_caso(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    return _load_caso(caso_id, db)
+    caso = _load_caso(caso_id, db)
+    if caso.status == STATUS_AGUARDANDO_DOCUMENTOS and _check_docs_completos(caso):
+        caso.status = STATUS_AGUARDANDO_POS_VENDA
+        caso.atualizado_em = datetime.utcnow()
+        db.commit()
+        caso = _load_caso(caso_id, db)
+    return caso
 
 
 @router.get("/{caso_id}/credito-vinculos", response_model=List[schemas.CreditoCasoVinculoOut])
@@ -974,7 +980,7 @@ async def upload_documento(
                 tipo="novo_caso_pos_venda",
                 titulo="Solicitação pronta para assinatura do Pós-venda",
                 mensagem=(
-                    f"{current_user.nome or 'Time Oficina'} anexou as remessas obrigatórias do {codigo}. "
+                    f"{current_user.nome or 'Time Oficina'} anexou remessa(s) do {codigo}. "
                     "Aguardando assinatura do Gerente de Pós-venda."
                 ),
                 case_id=caso_refreshed.id,
@@ -1128,7 +1134,7 @@ def assinar_documento_individual(
     if not _documento_exige_assinatura(doc):
         raise HTTPException(
             status_code=400,
-            detail="Somente os documentos obrigatórios de Remessa (DRONEPRO/HUADA) participam da assinatura documental.",
+            detail="Somente documentos de Remessa (DRONEPRO/HUADA) participam da assinatura documental.",
         )
 
     prefix = "data:image/png;base64,"
