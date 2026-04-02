@@ -115,11 +115,8 @@ export default function NovoCaso() {
       setError('Selecione o cliente')
       return
     }
-    const remessasObrigatoriasFaltantes = []
-    if (!docs.remessa_dronepro) remessasObrigatoriasFaltantes.push('Remessa DRONEPRO')
-    if (!docs.remessa_huada) remessasObrigatoriasFaltantes.push('Remessa HUADA')
-    if (remessasObrigatoriasFaltantes.length > 0) {
-      setError(`Anexe os documentos obrigatórios de remessa: ${remessasObrigatoriasFaltantes.join(' e ')}.`)
+    if (!docs.remessa_dronepro && !docs.remessa_huada) {
+      setError('Anexe pelo menos uma remessa (DRONEPRO ou HUADA) para iniciar o caso sem bloqueio.')
       return
     }
 
