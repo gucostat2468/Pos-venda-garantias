@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { casosAPI, clientesAPI } from '../api'
 import { StatusBadge, TipoBadge, RebateBadge } from '../components/StatusBadge'
@@ -100,11 +100,41 @@ const FILA_ASSINATURA_CONFIG = {
 const STATUS_LEGADO_IMPRESSAO = 'Aguardando Impressão Oficina'
 const STATUS_ETAPA_ESTOQUE_COMPAT = new Set(['Aguardando Conferência Estoque', STATUS_LEGADO_IMPRESSAO])
 
+const criarResumoCasoLista = (caso) => [
+  caso?.id ?? '',
+  caso?.dji_case_id ?? '',
+  caso?.status ?? '',
+  caso?.status_rebate ?? '',
+  caso?.tipo_processo ?? '',
+  caso?.produto_nome ?? '',
+  caso?.produto_modelo ?? '',
+  caso?.produto_sn ?? '',
+  caso?.data_entrada ?? '',
+  caso?.atualizado_em ?? '',
+  caso?.criado_em ?? '',
+  caso?.assinatura_etapa ?? '',
+  caso?.cliente?.id ?? '',
+  caso?.cliente?.razao_social ?? '',
+].join('|')
+
+const mesmaListaCasos = (atual, proxima) => {
+  if (atual === proxima) return true
+  if (!Array.isArray(atual) || !Array.isArray(proxima)) return false
+  if (atual.length !== proxima.length) return false
+  for (let i = 0; i < atual.length; i += 1) {
+    if (criarResumoCasoLista(atual[i]) !== criarResumoCasoLista(proxima[i])) {
+      return false
+    }
+  }
+  return true
+}
+
 export default function CasosList() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { user, podeAssinar } = useAuth()
   const isGestorEstoque = user?.papel === 'gestor_estoque' || user?.papel === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
+  const searchParamsKey = searchParams.toString()
   const [casos, setCasos] = useState([])
   const [historicoAssinados, setHistoricoAssinados] = useState([])
   const [clientes, setClientes] = useState([])
@@ -116,10 +146,29 @@ export default function CasosList() {
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
   const filaConfig = FILA_ASSINATURA_CONFIG[filtroStatus] || null
+  const ultimoScrollYRef = useRef(0)
+
+  const memorizarScrollAtual = useCallback(() => {
+    if (typeof window === 'undefined') return
+    ultimoScrollYRef.current = window.scrollY || window.pageYOffset || 0
+  }, [])
+
+  const restaurarScrollSeSaltou = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const scrollAlvo = ultimoScrollYRef.current || 0
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const scrollAtual = window.scrollY || window.pageYOffset || 0
+        if (scrollAlvo - scrollAtual > 120) {
+          window.scrollTo({ top: scrollAlvo, behavior: 'auto' })
+        }
+      })
+    })
+  }, [])
 
   const atualizarFiltroStatus = useCallback((novoStatus) => {
     setFiltroStatus(novoStatus)
-    const next = new URLSearchParams(searchParams)
+    const next = new URLSearchParams(searchParamsKey)
     if (novoStatus) {
       next.set('status', novoStatus)
       const fila = STATUS_TO_FILA_PARAM[novoStatus]
@@ -129,17 +178,21 @@ export default function CasosList() {
       next.delete('status')
       next.delete('fila')
     }
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
+    if (next.toString() !== searchParamsKey) {
+      setSearchParams(next, { replace: true, preventScrollReset: true })
+    }
+  }, [searchParamsKey, setSearchParams])
 
   const fetchCasos = useCallback(async ({ silent = false } = {}) => {
+    if (silent) memorizarScrollAtual()
     const acessoFilaEstoqueBloqueado =
       filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
     if (acessoFilaEstoqueBloqueado) {
-      setCasos([])
-      setHistoricoAssinados([])
+      setCasos((prev) => (prev.length === 0 ? prev : []))
+      setHistoricoAssinados((prev) => (prev.length === 0 ? prev : []))
       if (!silent) setErroLista('')
       if (!silent) setLoading(false)
+      if (silent) restaurarScrollSeSaltou()
       return
     }
     if (!silent) setLoading(true)
@@ -186,14 +239,15 @@ export default function CasosList() {
           return db - da
         })
 
-        setCasos(pendSorted)
-        setHistoricoAssinados(histSorted)
+        setCasos((prev) => (mesmaListaCasos(prev, pendSorted) ? prev : pendSorted))
+        setHistoricoAssinados((prev) => (mesmaListaCasos(prev, histSorted) ? prev : histSorted))
       } else {
         const params = { ...baseParams }
         if (filtroStatus) params.status = filtroStatus
         const res = await casosAPI.listar(params)
-        setCasos(Array.isArray(res.data) ? res.data : [])
-        setHistoricoAssinados([])
+        const lista = Array.isArray(res.data) ? res.data : []
+        setCasos((prev) => (mesmaListaCasos(prev, lista) ? prev : lista))
+        setHistoricoAssinados((prev) => (prev.length === 0 ? prev : []))
       }
     } catch (e) {
       console.error(e)
@@ -201,16 +255,26 @@ export default function CasosList() {
         setErroLista('Falha ao carregar os casos desta fila. Verifique a conexão e tente novamente.')
       }
     } finally {
+      if (silent) restaurarScrollSeSaltou()
       if (!silent) setLoading(false)
     }
-  }, [filtroStatus, filtroTipo, filtroCliente, busca, filaConfig, isGestorEstoque])
+  }, [
+    filtroStatus,
+    filtroTipo,
+    filtroCliente,
+    busca,
+    filaConfig,
+    isGestorEstoque,
+    memorizarScrollAtual,
+    restaurarScrollSeSaltou,
+  ])
 
   useEffect(() => {
-    const statusUrl = resolverStatusBusca(searchParams)
+    const statusUrl = resolverStatusBusca(new URLSearchParams(searchParamsKey))
     if (statusUrl !== filtroStatus) {
       setFiltroStatus(statusUrl)
     }
-  }, [searchParams, filtroStatus])
+  }, [searchParamsKey, filtroStatus])
 
   useEffect(() => {
     clientesAPI.listar().then(r => setClientes(r.data)).catch(() => {})
