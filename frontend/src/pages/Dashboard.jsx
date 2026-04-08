@@ -170,6 +170,39 @@ const PENDING_STATUSES = [
   'Aguardando Vídeo Descarte',
 ]
 
+const PENDING_STATUS_CONFIG = [
+  {
+    status: 'Aguardando Documentos',
+    label: 'Aguardando Documentos',
+    to: `/casos?status=${encodeURIComponent('Aguardando Documentos')}`,
+  },
+  {
+    status: 'Aguardando Aprovação Pós-Venda',
+    label: 'Aprovação Pós-venda',
+    to: '/casos?fila=pos_venda',
+  },
+  {
+    status: 'Aguardando Aprovação Diretoria',
+    label: 'Aprovação Diretor Comercial',
+    to: '/casos?fila=diretoria',
+  },
+  {
+    status: 'Aguardando Conferência Estoque',
+    label: 'Conferência Gestor de Estoque',
+    to: '/casos?fila=estoque',
+  },
+  {
+    status: 'Aguardando Impressão Oficina',
+    label: 'Impressão e Finalização',
+    to: '/impressao-finalizacao',
+  },
+  {
+    status: 'Aguardando Vídeo Descarte',
+    label: 'Vídeo de Descarte',
+    to: `/casos?status=${encodeURIComponent('Aguardando Vídeo Descarte')}`,
+  },
+]
+
 const STATUS_VIEW = {
   'Aguardando Documentos': { label: 'Aguardando docs', tone: 'warning' },
   'Aguardando Aprovação Pós-Venda': { label: 'Aprovação Pós-venda', tone: 'blue' },
@@ -309,11 +342,19 @@ export default function Dashboard() {
     { enabled: true, intervalMs: 2000 }
   )
 
-  const pendPosVenda = casos.filter((caso) => caso.status === 'Aguardando Aprovação Pós-Venda').length
-  const pendDiretoria = casos.filter((caso) => caso.status === 'Aguardando Aprovação Diretoria').length
-  const pendEstoque = casos.filter((caso) => caso.status === 'Aguardando Conferência Estoque').length
-  const pendImpressao = casos.filter((caso) => caso.status === 'Aguardando Impressão Oficina').length
-  const pendAssinaturasConclusao = pendPosVenda + pendDiretoria + pendEstoque + pendImpressao
+  const pendingSummary = useMemo(() => {
+    return PENDING_STATUS_CONFIG.map((cfg) => {
+      const casosStatus = casos.filter((caso) => caso.status === cfg.status)
+      return {
+        ...cfg,
+        count: casosStatus.length,
+        casos: casosStatus,
+      }
+    })
+  }, [casos])
+
+  const totalPendenciasDashboard = pendingSummary.reduce((acc, item) => acc + item.count, 0)
+  const pendingWithCases = pendingSummary.filter((item) => item.count > 0)
   const casoAtual = casoDestaque || casos[0] || null
   const codigoCasoAtual = formatCaseCode(casoAtual)
   const canDeleteCase = isAdmin || isOperador
@@ -429,31 +470,14 @@ export default function Dashboard() {
       tone: 'blue',
     },
     {
-      label: 'Pendentes por Etapa',
-      value: pendAssinaturasConclusao,
-      detail: 'Assinaturas e conclusão separadas por responsável',
-      breakdown: [
-        {
-          label: 'Pós-venda',
-          value: pendPosVenda,
-          to: '/casos?fila=pos_venda',
-        },
-        {
-          label: 'Diretor Comercial',
-          value: pendDiretoria,
-          to: '/casos?fila=diretoria',
-        },
-        {
-          label: 'Gestor de Estoque',
-          value: pendEstoque,
-          to: '/casos?fila=estoque',
-        },
-        {
-          label: 'Impressão e Finalização',
-          value: pendImpressao,
-          to: '/impressao-finalizacao',
-        },
-      ],
+      label: 'Pendências no Dashboard',
+      value: totalPendenciasDashboard,
+      detail: 'Todas as etapas pendentes centralizadas por status',
+      breakdown: pendingSummary.map((item) => ({
+        label: item.label,
+        value: item.count,
+        to: item.to,
+      })),
       tone: 'amber',
     },
     {
@@ -500,6 +524,74 @@ export default function Dashboard() {
                 )}
               </article>
             ))}
+          </section>
+
+          <section className="dp-panel">
+            <div className="dp-panel-head panel-space">
+              <h2>Pendências da Operação</h2>
+              <span className="dp-chip-subtle">{totalPendenciasDashboard} pendente(s)</span>
+            </div>
+            {pendingWithCases.length === 0 ? (
+              <div className="dash-empty-cell">Nenhuma pendência ativa no momento.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {pendingSummary.map((item) => (
+                  <article
+                    key={item.status}
+                    style={{
+                      border: '1px solid #dbe4f2',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      background: item.count > 0 ? '#f8fbff' : '#fff',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <strong style={{ color: '#1f3a64', fontSize: 13 }}>{item.label}</strong>
+                      <span style={{ fontWeight: 800, color: item.count > 0 ? '#b45309' : '#64748b', fontSize: 18 }}>
+                        {item.count}
+                      </span>
+                    </div>
+
+                    {item.count > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {item.casos.slice(0, 4).map((caso) => (
+                          <Link
+                            key={caso.id}
+                            to={`/casos/${caso.id}`}
+                            style={{
+                              border: '1px solid #cfe0fb',
+                              borderRadius: 999,
+                              padding: '4px 8px',
+                              fontSize: 11,
+                              color: '#1f67c4',
+                              textDecoration: 'none',
+                              background: '#edf4ff',
+                            }}
+                          >
+                            {formatCaseCode(caso)}
+                          </Link>
+                        ))}
+                        {item.count > 4 && (
+                          <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center' }}>
+                            +{item.count - 4} caso(s)
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                        Sem pendências neste status.
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 8 }}>
+                      <Link className="dash-view-btn" to={item.to}>
+                        Abrir fila
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="dp-panel">

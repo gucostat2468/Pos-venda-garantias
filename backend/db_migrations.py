@@ -29,6 +29,34 @@ def run_sqlite_migrations(engine) -> None:
         if _table_exists(conn, "credito_extratos") and not _column_exists(conn, "credito_extratos", "cliente_id"):
             conn.execute(text("ALTER TABLE credito_extratos ADD COLUMN cliente_id INTEGER"))
 
+        # Migração de fluxo legado:
+        # casos que estavam em "Aguardando Impressão Oficina" (sem assinatura de estoque)
+        # passam para "Aguardando Conferência Estoque" para conclusão obrigatória pelo gestor.
+        if _table_exists(conn, "casos_garantia") and _table_exists(conn, "assinaturas"):
+            conn.execute(text("""
+                UPDATE casos_garantia
+                   SET status = 'Aguardando Conferência Estoque',
+                       status_rebate = CASE
+                         WHEN status_rebate IS NULL OR status_rebate IN ('', 'Não Aplicável')
+                           THEN 'Aguardando Apuração'
+                         ELSE status_rebate
+                       END
+                 WHERE status = 'Aguardando Impressão Oficina'
+                   AND EXISTS (
+                        SELECT 1
+                          FROM assinaturas a_dir
+                         WHERE a_dir.case_id = casos_garantia.id
+                           AND a_dir.etapa_fluxo = 'Diretoria'
+                           AND a_dir.status_decisao = 'Aprovado'
+                   )
+                   AND NOT EXISTS (
+                        SELECT 1
+                          FROM assinaturas a_est
+                         WHERE a_est.case_id = casos_garantia.id
+                           AND a_est.etapa_fluxo = 'Estoque'
+                   )
+            """))
+
         if not _table_exists(conn, "notificacoes"):
             conn.execute(text("""
                 CREATE TABLE notificacoes (

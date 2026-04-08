@@ -80,6 +80,8 @@ const DOCS_FLUXO_OFICINA = [
   },
 ]
 const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
+const STATUS_AGUARDANDO_IMPRESSAO = 'Aguardando Impressão Oficina'
+const STATUS_ETAPA_ESTOQUE_COMPAT = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO]
 const TIPO_DOCUMENTO_FOTO_ESTOQUE = 'Foto dos Pedidos - Estoque'
 
 const normalizeText = (value) => String(value || '')
@@ -158,6 +160,7 @@ export default function CasoDetail() {
   const [previewDocErro, setPreviewDocErro] = useState(false)
   const fileRefs = useRef({})
   const canvasRef = useRef(null)
+  const fotoEstoqueRowRef = useRef(null)
   const isDrawingRef = useRef(false)
   const autoSignHandledRef = useRef(false)
 
@@ -524,12 +527,13 @@ export default function CasoDetail() {
   }
 
   const autoSignRequested = searchParams.get('assinar') === '1'
+  const autoFotoUploadRequested = searchParams.get('foto_estoque') === '1'
   const canSign = caso ? podeAssinar(caso) : false
   const etapaAssinaturaAtual = caso?.status === 'Aguardando Aprovação Pós-Venda'
     ? 'Pos-venda'
     : caso?.status === 'Aguardando Aprovação Diretoria'
       ? 'Diretoria'
-      : caso?.status === STATUS_AGUARDANDO_ESTOQUE
+      : STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso?.status)
         ? 'Estoque'
       : null
   const documentosAssinaveis = (caso?.documentos || [])
@@ -559,6 +563,14 @@ export default function CasoDetail() {
     autoSignHandledRef.current = true
     if (canSign) abrirModalAssinatura()
   }, [autoSignRequested, loading, caso, canSign])
+
+  useEffect(() => {
+    if (!autoFotoUploadRequested || loading || !caso) return
+    const timer = window.setTimeout(() => {
+      fotoEstoqueRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [autoFotoUploadRequested, loading, caso])
 
   useEffect(() => {
     if (!assinaModal || !documentoAtualAssinatura) {
@@ -625,14 +637,15 @@ export default function CasoDetail() {
     return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
   }
   const usuarioEhGestorEstoque = user?.papel === 'gestor_estoque'
-  const isFinalOrReprovado = [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
-  const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
+  const isFinalOrReprovado = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
+  const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
   const canManageOfficeDocs = (isOperador || isAdmin) && !isLockedForOfficeEdition
   const documentosFotoEstoque = (caso.documentos || []).filter(
     (doc) => categorizarTipoDocumento(doc.tipo_documento) === 'categoria_foto_pedido_estoque'
   )
   const fotoEstoqueAtual = documentosFotoEstoque[0] || null
-  const podeAnexarFotoEstoque = isGestorEstoque && caso.status === STATUS_AGUARDANDO_ESTOQUE
+  const podeAnexarFotoEstoque = isGestorEstoque && STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status)
+  const destacarFotoEstoque = autoFotoUploadRequested
   const assinaturasPorDocumento = (caso.documento_assinaturas || []).reduce((acc, sig) => {
     if (!acc[sig.documento_id]) acc[sig.documento_id] = []
     acc[sig.documento_id].push(sig)
@@ -672,8 +685,8 @@ export default function CasoDetail() {
   const assinaturaEstoqueRegistrada = (caso.assinaturas || []).some((sig) => sig.etapa_fluxo === 'Estoque')
   const pipelineSteps = [
     { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
-    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
-    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
+    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
+    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
     { label: 'Gestor de Estoque', key: 'estoque', done: assinaturaEstoqueRegistrada || caso.status === 'Finalizado' },
     { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
   ]
@@ -705,7 +718,7 @@ export default function CasoDetail() {
           {canSign && (
             <button onClick={abrirModalAssinatura} style={s.signBtn}>✍️ Assinar</button>
           )}
-          {(isOperador || isAdmin) && caso.status === 'Aguardando Impressão Oficina' && (
+          {(isOperador || isAdmin) && caso.status === STATUS_AGUARDANDO_IMPRESSAO && (
             <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={s.signBtn}>
               {confirmandoImpressao ? 'Processando...' : '🖨️ Imprimir (3 vias) e Finalizar'}
             </button>
@@ -833,7 +846,7 @@ export default function CasoDetail() {
             Somente Time Oficina pode anexar, substituir ou remover documentos nesta etapa.
           </div>
         )}
-        {usuarioEhGestorEstoque && caso.status !== STATUS_AGUARDANDO_ESTOQUE && (
+        {usuarioEhGestorEstoque && !STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status) && (
           <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
             A área de anexo da foto dos pedidos do estoque fica disponível quando o caso estiver em{' '}
             <strong>{STATUS_AGUARDANDO_ESTOQUE}</strong>.
@@ -900,7 +913,15 @@ export default function CasoDetail() {
             )
           })}
 
-          <div style={{ ...s.docRow, border: '1.5px dashed #fdba74', background: '#fff7ed' }}>
+          <div
+            ref={fotoEstoqueRowRef}
+            style={{
+              ...s.docRow,
+              border: '1.5px dashed #fdba74',
+              background: '#fff7ed',
+              ...(destacarFotoEstoque ? { boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.25)' } : {}),
+            }}
+          >
             <div style={s.docIcon}>{fotoEstoqueAtual ? '📸' : '📦'}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>
@@ -1081,7 +1102,7 @@ export default function CasoDetail() {
           </div>
         )}
 
-        {usuarioEhGestorEstoque && caso.status === STATUS_AGUARDANDO_ESTOQUE && (
+        {usuarioEhGestorEstoque && STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status) && (
           <div style={{ marginTop: 16, padding: 16, background: '#fff7ed', borderRadius: 8, border: '1px solid #fdba74' }}>
             <p style={{ fontSize: 13, color: '#9a3412', marginBottom: 10, fontWeight: 700 }}>
               📦 Etapa final do estoque:
@@ -1092,7 +1113,7 @@ export default function CasoDetail() {
           </div>
         )}
 
-        {(isOperador || isAdmin) && caso.status === 'Aguardando Impressão Oficina' && (
+        {(isOperador || isAdmin) && caso.status === STATUS_AGUARDANDO_IMPRESSAO && (
           <div style={{ marginTop: 16, padding: 16, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
             <p style={{ fontSize: 13, color: '#166534', marginBottom: 10, fontWeight: 700 }}>
               🖨️ Pronto para impressão em 3 vias:

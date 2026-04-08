@@ -97,6 +97,8 @@ const FILA_ASSINATURA_CONFIG = {
     acaoPendencia: 'Conferir e Concluir',
   },
 }
+const STATUS_LEGADO_IMPRESSAO = 'Aguardando Impressão Oficina'
+const STATUS_ETAPA_ESTOQUE_COMPAT = new Set(['Aguardando Conferência Estoque', STATUS_LEGADO_IMPRESSAO])
 
 export default function CasosList() {
   const isMobile = useMediaQuery('(max-width: 760px)')
@@ -149,12 +151,23 @@ export default function CasosList() {
       if (busca) baseParams.busca = busca
 
       if (filaConfig) {
-        const [pendRes, histRes] = await Promise.all([
+        const isFilaEstoque = filtroStatus === 'Aguardando Conferência Estoque'
+        const [pendRes, pendResLegado, histRes] = await Promise.all([
           casosAPI.listar({ ...baseParams, status: filtroStatus }),
+          isFilaEstoque
+            ? casosAPI.listar({ ...baseParams, status: STATUS_LEGADO_IMPRESSAO })
+            : Promise.resolve({ data: [] }),
           casosAPI.listar({ ...baseParams, assinatura_etapa: filaConfig.etapaApi }),
         ])
 
-        const pendData = Array.isArray(pendRes.data) ? pendRes.data : []
+        const pendDataBase = Array.isArray(pendRes.data) ? pendRes.data : []
+        const pendDataLegado = Array.isArray(pendResLegado.data) ? pendResLegado.data : []
+        const pendMap = new Map()
+        const pendDataMerge = [...pendDataBase, ...pendDataLegado]
+        pendDataMerge
+          .filter((caso) => !isFilaEstoque || STATUS_ETAPA_ESTOQUE_COMPAT.has(caso.status))
+          .forEach((caso) => pendMap.set(caso.id, caso))
+        const pendData = [...pendMap.values()]
         const histData = Array.isArray(histRes.data) ? histRes.data : []
 
         const historicoMap = new Map()
@@ -242,6 +255,7 @@ export default function CasosList() {
   const totalEncontrados = filaConfig ? casos.length + historicoAssinados.length : casos.length
   const acessoFilaEstoqueBloqueado =
     filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
+  const filaEstoqueAtiva = filtroStatus === 'Aguardando Conferência Estoque'
 
   return (
     <div>
@@ -318,6 +332,24 @@ export default function CasosList() {
               <span style={s.sectionCount}>{casos.length}</span>
             </div>
             <p style={s.sectionHint}>{filaConfig.pendentesHint}</p>
+            {filaEstoqueAtiva && (
+              <div style={s.photoShortcutWrap}>
+                {casos.length > 0 ? (
+                  <Link to={`/casos/${casos[0].id}?foto_estoque=1`} style={s.photoShortcutBtn}>
+                    📸 Anexar Foto do Estoque (Atalho)
+                  </Link>
+                ) : (
+                  <>
+                    <button type="button" disabled style={{ ...s.photoShortcutBtn, ...s.photoShortcutBtnDisabled }}>
+                      📸 Anexar Foto do Estoque (Atalho)
+                    </button>
+                    <div style={s.photoShortcutHint}>
+                      Sem pendências no momento. Quando entrar um caso nesta fila, use este atalho para abrir direto na área de anexo.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {loading ? (
               <div style={s.loading}>Carregando pendências...</div>
@@ -342,6 +374,9 @@ export default function CasosList() {
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Entrada:</span><span>{new Date(`${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span></div>
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
+                      {filaEstoqueAtiva && (
+                        <Link to={`/casos/${caso.id}?foto_estoque=1`} style={s.mobilePhotoBtn}>📸</Link>
+                      )}
                       {podeAssinar(caso) && (
                         <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
                       )}
@@ -389,6 +424,9 @@ export default function CasosList() {
                         <td style={s.td}>
                           <div style={s.actionRow}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
+                            {filaEstoqueAtiva && (
+                              <Link to={`/casos/${caso.id}?foto_estoque=1`} style={s.photoBtn}>📸 Anexar Foto</Link>
+                            )}
                             {podeAssinar(caso) && (
                               <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ {filaConfig.acaoPendencia}</Link>
                             )}
@@ -678,6 +716,35 @@ const s = {
   },
   queueKpiLabel: { fontSize: 12, color: 'var(--text-muted)' },
   queueKpiValue: { fontSize: 28, fontWeight: 800, color: 'var(--text)' },
+  photoShortcutWrap: { marginBottom: 12 },
+  photoShortcutBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #fdba74',
+    background: '#fff7ed',
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: 700,
+    textDecoration: 'none',
+  },
+  photoShortcutHint: {
+    marginTop: 8,
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #fdba74',
+    background: '#fff7ed',
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  photoShortcutBtnDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
+    pointerEvents: 'none',
+  },
   tableCard: {
     background: '#fff', borderRadius: 10, boxShadow: 'var(--shadow)',
     border: '1px solid var(--border)', overflow: 'hidden', padding: 12,
@@ -706,6 +773,17 @@ const s = {
     borderRadius: 6,
     background: '#ecfdf5',
     border: '1px solid #bbf7d0',
+    whiteSpace: 'nowrap',
+  },
+  photoBtn: {
+    color: '#9a3412',
+    fontWeight: 700,
+    fontSize: 12,
+    textDecoration: 'none',
+    padding: '4px 8px',
+    borderRadius: 6,
+    background: '#fff7ed',
+    border: '1px solid #fdba74',
     whiteSpace: 'nowrap',
   },
   actionRow: { display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' },
@@ -763,6 +841,20 @@ const s = {
     border: '1px solid #bbf7d0',
     background: '#ecfdf5',
     color: '#065f46',
+    borderRadius: 8,
+    minWidth: 46,
+    padding: '0 10px',
+    fontSize: 16,
+    fontWeight: 700,
+    textDecoration: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobilePhotoBtn: {
+    border: '1px solid #fdba74',
+    background: '#fff7ed',
+    color: '#9a3412',
     borderRadius: 8,
     minWidth: 46,
     padding: '0 10px',
