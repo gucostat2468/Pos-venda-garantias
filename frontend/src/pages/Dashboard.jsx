@@ -144,8 +144,13 @@ const FLOW_STEPS = [
   },
   {
     id: 4,
-    title: 'Impressão em 3 Vias',
-    text: 'Time Oficina imprime: Financeiro, Estoque e Controle Interno',
+    title: 'Gestor de Estoque',
+    text: 'Conferência final da esteira, anexo da foto dos pedidos e assinatura de conclusão',
+  },
+  {
+    id: 5,
+    title: 'Concluído',
+    text: 'Caso finalizado com histórico completo de aprovações e documentos',
   },
 ]
 
@@ -160,6 +165,7 @@ const PENDING_STATUSES = [
   'Aguardando Documentos',
   'Aguardando Aprovação Pós-Venda',
   'Aguardando Aprovação Diretoria',
+  'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
   'Aguardando Vídeo Descarte',
 ]
@@ -168,6 +174,7 @@ const STATUS_VIEW = {
   'Aguardando Documentos': { label: 'Aguardando docs', tone: 'warning' },
   'Aguardando Aprovação Pós-Venda': { label: 'Aprovação Pós-venda', tone: 'blue' },
   'Aguardando Aprovação Diretoria': { label: 'Aprovação diretor comercial', tone: 'warning' },
+  'Aguardando Conferência Estoque': { label: 'Conferência do estoque', tone: 'warning' },
   'Aguardando Impressão Oficina': { label: 'Aguardando impressão', tone: 'success' },
   'Aguardando Vídeo Descarte': { label: 'Vídeo descarte', tone: 'blue' },
   Finalizado: { label: 'Finalizado', tone: 'success' },
@@ -241,6 +248,7 @@ export default function Dashboard() {
   const [casos, setCasos] = useState([])
   const [casoDestaque, setCasoDestaque] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [erroDashboard, setErroDashboard] = useState('')
   const [tableFilter, setTableFilter] = useState('todos')
   const [downloadingDossie, setDownloadingDossie] = useState(false)
   const [deletingCases, setDeletingCases] = useState({})
@@ -269,7 +277,8 @@ export default function Dashboard() {
 
       const lista = Array.isArray(casosRes.data) ? casosRes.data : []
       setStats(statsRes.data || {})
-      setCasos(lista.slice(0, 12))
+      setCasos(lista)
+      if (!silent) setErroDashboard('')
 
       if (lista.length > 0) {
         try {
@@ -283,6 +292,9 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error(err)
+      if (!silent) {
+        setErroDashboard('Falha ao carregar o dashboard. Verifique a conexão e tente novamente.')
+      }
     } finally {
       if (!silent) setLoading(false)
     }
@@ -299,6 +311,9 @@ export default function Dashboard() {
 
   const pendPosVenda = casos.filter((caso) => caso.status === 'Aguardando Aprovação Pós-Venda').length
   const pendDiretoria = casos.filter((caso) => caso.status === 'Aguardando Aprovação Diretoria').length
+  const pendEstoque = casos.filter((caso) => caso.status === 'Aguardando Conferência Estoque').length
+  const pendImpressao = casos.filter((caso) => caso.status === 'Aguardando Impressão Oficina').length
+  const pendAssinaturasConclusao = pendPosVenda + pendDiretoria + pendEstoque + pendImpressao
   const casoAtual = casoDestaque || casos[0] || null
   const codigoCasoAtual = formatCaseCode(casoAtual)
   const canDeleteCase = isAdmin || isOperador
@@ -340,6 +355,7 @@ export default function Dashboard() {
 
   const assinaturaPos = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Pos-venda')
   const assinaturaDir = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Diretoria')
+  const assinaturaEstoque = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Estoque')
 
   const statusPos = assinaturaPos
     ? assinaturaPos.status_decisao
@@ -352,6 +368,14 @@ export default function Dashboard() {
     : casoAtual?.status === 'Aguardando Aprovação Diretoria'
       ? 'Aguardando'
       : 'Pendente'
+
+  const statusEstoque = assinaturaEstoque
+    ? assinaturaEstoque.status_decisao
+    : casoAtual?.status === 'Aguardando Conferência Estoque'
+      ? 'Aguardando'
+      : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda', 'Aguardando Aprovação Diretoria'].includes(casoAtual?.status || '')
+        ? 'Pendente'
+        : 'Concluida'
 
   const canSign = casoAtual ? podeAssinar(casoAtual) : false
   const hasCompiledPdf = Boolean(casoAtual?.id && casoAtual?.link_pdf_compilado)
@@ -371,7 +395,17 @@ export default function Dashboard() {
     ? `${assinaturaDir.usuario?.nome || 'Responsável'} em ${formatDateTime(assinaturaDir.data_assinatura)}`
     : casoAtual?.status === 'Aguardando Aprovação Diretoria'
       ? 'Aguardando assinatura do diretor comercial.'
-      : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda'].includes(casoAtual?.status || '')
+    : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda'].includes(casoAtual?.status || '')
+        ? 'Etapa ainda não liberada.'
+        : casoAtual?.status === 'Reprovado'
+          ? 'Fluxo encerrado por reprovação.'
+          : 'Etapa concluída.'
+
+  const assinaturaEstoqueMeta = assinaturaEstoque
+    ? `${assinaturaEstoque.usuario?.nome || 'Responsável'} em ${formatDateTime(assinaturaEstoque.data_assinatura)}`
+    : casoAtual?.status === 'Aguardando Conferência Estoque'
+      ? 'Aguardando conferência e assinatura do gestor de estoque.'
+      : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda', 'Aguardando Aprovação Diretoria'].includes(casoAtual?.status || '')
         ? 'Etapa ainda não liberada.'
         : casoAtual?.status === 'Reprovado'
           ? 'Fluxo encerrado por reprovação.'
@@ -391,13 +425,35 @@ export default function Dashboard() {
     {
       label: 'Total de Casos',
       value: stats?.total_casos ?? 0,
-      detail: `${casos.length} exibidos na tela inicial`,
+      detail: `${casos.length} casos carregados no monitoramento em tempo real`,
       tone: 'blue',
     },
     {
-      label: 'Pendentes de Aprovação',
-      value: stats?.aguardando_aprovacao ?? 0,
-      detail: `${pendPosVenda} Pós-venda / ${pendDiretoria} Diretor Comercial`,
+      label: 'Pendentes por Etapa',
+      value: pendAssinaturasConclusao,
+      detail: 'Assinaturas e conclusão separadas por responsável',
+      breakdown: [
+        {
+          label: 'Pós-venda',
+          value: pendPosVenda,
+          to: '/casos?fila=pos_venda',
+        },
+        {
+          label: 'Diretor Comercial',
+          value: pendDiretoria,
+          to: '/casos?fila=diretoria',
+        },
+        {
+          label: 'Gestor de Estoque',
+          value: pendEstoque,
+          to: '/casos?fila=estoque',
+        },
+        {
+          label: 'Impressão e Finalização',
+          value: pendImpressao,
+          to: '/impressao-finalizacao',
+        },
+      ],
       tone: 'amber',
     },
     {
@@ -420,12 +476,28 @@ export default function Dashboard() {
         <div className="dp-panel dash-loading">Carregando dashboard...</div>
       ) : (
         <>
+          {erroDashboard && (
+            <section className="dp-panel" style={{ marginBottom: 12, borderColor: '#fecdd3', background: '#fff1f2', color: '#9f1239' }}>
+              {erroDashboard}
+            </section>
+          )}
+
           <section className="dash-kpi-grid">
             {cards.map((card) => (
               <article key={card.label} className={`dash-kpi-card tone-${card.tone}`}>
                 <p className="dash-kpi-label">{card.label}</p>
                 <h3 className="dash-kpi-value">{card.value}</h3>
                 <p className="dash-kpi-detail">{card.detail}</p>
+                {Array.isArray(card.breakdown) && card.breakdown.length > 0 && (
+                  <div className="dash-kpi-breakdown">
+                    {card.breakdown.map((item) => (
+                      <Link key={item.label} className="dash-kpi-break-item" to={item.to}>
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </article>
             ))}
           </section>
@@ -517,6 +589,14 @@ export default function Dashboard() {
                     </span>
                   </div>
 
+                  <div className="dash-sign-card">
+                    <div className="dash-sign-title">3ª Assinatura - Gestor de Estoque</div>
+                    <div className="dash-sign-meta">{assinaturaEstoqueMeta}</div>
+                    <span className={`dash-sign-badge state-${statusEstoque.toLowerCase()}`}>
+                      {statusEstoque}
+                    </span>
+                  </div>
+
                   {canSign && casoAtual && (
                     <div className="dash-sign-actions">
                       <Link className="dash-approve-btn" to={`/casos/${casoAtual.id}`}>
@@ -525,6 +605,15 @@ export default function Dashboard() {
                       <Link className="dash-reject-btn" to={`/casos/${casoAtual.id}`}>
                         Reprovar
                       </Link>
+                    </div>
+                  )}
+
+                  {casoAtual?.status === 'Aguardando Conferência Estoque' && (
+                    <div className="dash-print-note">
+                      <div className="dash-print-title">Conferência final do estoque:</div>
+                      <div>Anexar foto dos pedidos direcionados</div>
+                      <div>Assinar documentos pendentes da etapa</div>
+                      <div>Confirmar assinatura final para concluir</div>
                     </div>
                   )}
 

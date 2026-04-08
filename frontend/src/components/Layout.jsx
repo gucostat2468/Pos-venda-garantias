@@ -11,6 +11,7 @@ const PAPEL_LABEL = {
   operador: 'Time Oficina',
   gerente_pos_venda: 'Gerente de Pós-venda',
   diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
 }
 
 const NOTIFICACAO_META = {
@@ -29,10 +30,85 @@ const NOTIFICACAO_META = {
     label: 'Pendente da Diretoria',
     tone: 'amber',
   },
+  pendencia_assinatura_estoque: {
+    icon: '📦',
+    label: 'Pendente do Estoque',
+    tone: 'amber',
+  },
   pronto_impressao_finalizacao: {
     icon: '🖨️',
     label: 'Impressão e Finalização',
     tone: 'green',
+  },
+  caso_finalizado_estoque: {
+    icon: '✅',
+    label: 'Concluído pelo Estoque',
+    tone: 'green',
+  },
+  operacao_caso_criado: {
+    icon: '🆕',
+    label: 'Caso criado',
+    tone: 'blue',
+  },
+  operacao_caso_atualizado: {
+    icon: '✏️',
+    label: 'Caso atualizado',
+    tone: 'teal',
+  },
+  operacao_caso_excluido: {
+    icon: '🗑️',
+    label: 'Caso excluído',
+    tone: 'red',
+  },
+  operacao_documento_anexado: {
+    icon: '📎',
+    label: 'Documento anexado',
+    tone: 'teal',
+  },
+  operacao_documento_substituido: {
+    icon: '🔁',
+    label: 'Documento substituído',
+    tone: 'teal',
+  },
+  operacao_documento_excluido: {
+    icon: '🧹',
+    label: 'Documento removido',
+    tone: 'amber',
+  },
+  operacao_documento_assinado: {
+    icon: '✍️',
+    label: 'Documento assinado',
+    tone: 'amber',
+  },
+  operacao_fluxo_movido: {
+    icon: '➡️',
+    label: 'Fluxo avançou',
+    tone: 'blue',
+  },
+  operacao_fluxo_retrocedido: {
+    icon: '↩️',
+    label: 'Fluxo retrocedeu',
+    tone: 'amber',
+  },
+  operacao_caso_assinado: {
+    icon: '✅',
+    label: 'Etapa assinada',
+    tone: 'green',
+  },
+  operacao_caso_reprovado: {
+    icon: '⛔',
+    label: 'Caso reprovado',
+    tone: 'red',
+  },
+  operacao_caso_finalizado: {
+    icon: '🏁',
+    label: 'Caso finalizado',
+    tone: 'green',
+  },
+  operacao_pdf_recompilado: {
+    icon: '📚',
+    label: 'Dossiê recompilado',
+    tone: 'neutral',
   },
   default: {
     icon: '🔔',
@@ -84,6 +160,35 @@ const PAGE_META = [
   },
 ]
 
+const FILA_PARAM_TO_STATUS = {
+  pos_venda: 'Aguardando Aprovação Pós-Venda',
+  diretoria: 'Aguardando Aprovação Diretoria',
+  estoque: 'Aguardando Conferência Estoque',
+}
+
+function normalizarStatus(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
+
+const STATUS_NORMALIZADO_TO_CANONICO = Object.values(FILA_PARAM_TO_STATUS).reduce((acc, status) => {
+  acc[normalizarStatus(status)] = status
+  return acc
+}, {})
+
+function resolverStatusDaBusca(searchValue) {
+  const fila = String(searchValue.get('fila') || '').trim().toLowerCase()
+  if (FILA_PARAM_TO_STATUS[fila]) {
+    return FILA_PARAM_TO_STATUS[fila]
+  }
+  const statusRaw = searchValue.get('status') || ''
+  const canonico = STATUS_NORMALIZADO_TO_CANONICO[normalizarStatus(statusRaw)]
+  return canonico || statusRaw
+}
+
 function getPageMeta(pathname) {
   const meta = PAGE_META.find((item) => item.test(pathname))
   if (meta) {
@@ -129,7 +234,7 @@ function SidebarItem({ to, icon, label, active, disabled }) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin, isOperador, isGestorEstoque } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useMediaQuery('(max-width: 980px)')
@@ -143,10 +248,12 @@ export default function Layout({ children }) {
   const [notifAtualizando, setNotifAtualizando] = useState(false)
   const notifRef = useRef(null)
   const pageMeta = getPageMeta(location.pathname)
-  const statusQuery = new URLSearchParams(location.search).get('status')
+  const searchValue = new URLSearchParams(location.search)
+  const statusQuery = resolverStatusDaBusca(searchValue)
   const isQueueStatus =
     statusQuery === 'Aguardando Aprovação Pós-Venda' ||
-    statusQuery === 'Aguardando Aprovação Diretoria'
+    statusQuery === 'Aguardando Aprovação Diretoria' ||
+    statusQuery === 'Aguardando Conferência Estoque'
   const isPrintQueuePath = location.pathname === '/impressao-finalizacao'
 
   useEffect(() => {
@@ -297,7 +404,7 @@ export default function Layout({ children }) {
 
   const menuAprovacoes = [
     {
-      to: `/casos?status=${encodeURIComponent('Aguardando Aprovação Pós-Venda')}`,
+      to: '/casos?fila=pos_venda',
       icon: '>',
       label: 'Fila Pós-venda',
       active:
@@ -305,19 +412,27 @@ export default function Layout({ children }) {
         statusQuery === 'Aguardando Aprovação Pós-Venda',
     },
     {
-      to: `/casos?status=${encodeURIComponent('Aguardando Aprovação Diretoria')}`,
+      to: '/casos?fila=diretoria',
       icon: '>',
       label: 'Fila Diretor Comercial',
       active:
         location.pathname === '/casos' &&
         statusQuery === 'Aguardando Aprovação Diretoria',
     },
-    {
+    ...(isGestorEstoque ? [{
+      to: '/casos?fila=estoque',
+      icon: '>',
+      label: 'Fila Gestor Estoque',
+      active:
+        location.pathname === '/casos' &&
+        statusQuery === 'Aguardando Conferência Estoque',
+    }] : []),
+    ...((isOperador || isAdmin) ? [{
       to: '/impressao-finalizacao',
       icon: '>',
       label: 'Imprimir e Finalizar',
       active: isPrintQueuePath,
-    },
+    }] : []),
   ]
 
   const menuAdmin = [

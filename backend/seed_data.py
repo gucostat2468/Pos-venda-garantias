@@ -49,6 +49,13 @@ DEFAULT_USERS = [
         "papel": "diretor_comercial",
         "aliases": ["diretor@dronepro"],
     },
+    {
+        "nome": "Gestor Estoque",
+        "email": "estoque@dronepro.com.br",
+        "senha": "estoque123",
+        "papel": "gestor_estoque",
+        "aliases": ["estoque@dronepro"],
+    },
 ]
 
 
@@ -196,6 +203,7 @@ def seed_database():
         print("  operadormarabá@dronepro     / operador123  (Time Oficina - Marabá)")
         print("  gerente@dronepro            / gerente123   (Vanier Afonso - Gerente Pós-venda)")
         print("  diretor@dronepro            / diretor123   (Marcus Lawder - Diretor Comercial)")
+        print("  estoque@dronepro            / estoque123   (Gestor de Estoque)")
         print("  Compatibilidade: também aceita @dronepro.com.br")
 
     except Exception as e:

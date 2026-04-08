@@ -51,7 +51,12 @@ export const casosAPI = {
   listarDocumentos: (id) => api.get(`/casos/${id}/documentos`),
   deletarDocumento: (caseId, docId) => api.delete(`/casos/${caseId}/documentos/${docId}`),
   downloadDocumentoFile: (caseId, docId, params) => api.get(`/casos/${caseId}/documentos/${docId}/download`, { responseType: 'blob', params }),
-  assinarDocumento: (caseId, docId, assinatura_data_url) => api.post(`/casos/${caseId}/documentos/${docId}/assinar`, { assinatura_data_url }),
+  assinarDocumento: (caseId, docId, payload) => {
+    const body = typeof payload === 'string'
+      ? { assinatura_data_url: payload }
+      : (payload || {})
+    return api.post(`/casos/${caseId}/documentos/${docId}/assinar`, body)
+  },
   assinar: (id, data) => api.post(`/casos/${id}/assinar`, data),
   confirmarImpressao: (id) => api.post(`/casos/${id}/confirmar-impressao`),
   uploadVideoDescarte: (id, formData) => api.post(`/casos/${id}/video-descarte`, formData, {
@@ -80,6 +85,9 @@ export const usuariosAPI = {
   atualizar: (id, data) => api.put(`/usuarios/${id}`, data),
   desativar: (id) => api.delete(`/usuarios/${id}`),
   resetSenha: (id, nova_senha) => api.post(`/usuarios/${id}/reset-senha`, { nova_senha }),
+  obterMinhaAssinatura: () => api.get('/usuarios/minha-assinatura'),
+  salvarMinhaAssinatura: (assinatura_data_url) => api.post('/usuarios/minha-assinatura', { assinatura_data_url }),
+  excluirMinhaAssinatura: () => api.delete('/usuarios/minha-assinatura'),
 }
 
 // ─── Crédito ────────────────────────────────────────────────────────────────

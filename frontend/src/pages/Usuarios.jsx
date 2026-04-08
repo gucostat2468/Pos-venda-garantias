@@ -7,6 +7,7 @@ const PAPEIS = [
   { value: 'operador', label: 'Time Oficina' },
   { value: 'gerente_pos_venda', label: 'Gerente Pós-venda' },
   { value: 'diretor_comercial', label: 'Diretor Comercial' },
+  { value: 'gestor_estoque', label: 'Gestor de Estoque' },
   { value: 'admin', label: 'Administrador' },
 ]
 
@@ -15,6 +16,7 @@ const PAPEL_LABEL = {
   operador: 'Time Oficina',
   gerente_pos_venda: 'Gerente Pós-venda',
   diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
 }
 
 const PAPEL_COLOR = {
@@ -22,6 +24,7 @@ const PAPEL_COLOR = {
   operador: { color: '#1e40af', bg: '#dbeafe' },
   gerente_pos_venda: { color: '#065f46', bg: '#d1fae5' },
   diretor_comercial: { color: '#92400e', bg: '#fef3c7' },
+  gestor_estoque: { color: '#9a3412', bg: '#ffedd5' },
 }
 
 export default function Usuarios() {

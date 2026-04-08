@@ -202,7 +202,8 @@ export default function NovoCaso() {
             <Step number={1} title="Time Oficina" text="Cria o caso e anexa os documentos obrigatórios." />
             <Step number={2} title="Gerente Pós-venda" text="Vanier Afonso assina digitalmente." />
             <Step number={3} title="Diretor Comercial" text="Marcus Lawder realiza a segunda assinatura." />
-            <Step number={4} title="Time Oficina" text="Imprime em 3 vias: Financeiro, Estoque e Controle da Oficina." />
+            <Step number={4} title="Gestor de Estoque" text="Confere os documentos assinados, anexa a foto dos pedidos e realiza a assinatura final." />
+            <Step number={5} title="Concluído" text="Caso segue para histórico final com rastreabilidade completa." />
           </div>
         </div>
 

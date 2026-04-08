@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from auth import get_current_user
 import models, schemas
+from services.auditoria import registrar_evento_auditoria
 
 router = APIRouter()
 
@@ -62,6 +63,17 @@ def marcar_notificacao_lida(
     if not notificacao.lida:
         notificacao.lida = 1
         notificacao.lida_em = datetime.utcnow()
+        registrar_evento_auditoria(
+            db,
+            acao="notificacao_marcada_lida",
+            modulo="notificacoes",
+            descricao=f"Notificação #{notificacao.id} marcada como lida.",
+            usuario=current_user,
+            case_id=notificacao.case_id,
+            entidade="notificacao",
+            entidade_id=notificacao.id,
+            detalhes={"tipo": notificacao.tipo},
+        )
         db.commit()
         db.refresh(notificacao)
     return notificacao
@@ -85,6 +97,15 @@ def marcar_todas_notificacoes_lidas(
         total += 1
 
     if total:
+        registrar_evento_auditoria(
+            db,
+            acao="notificacoes_marcadas_lidas",
+            modulo="notificacoes",
+            descricao=f"{total} notificação(ões) marcadas como lidas.",
+            usuario=current_user,
+            entidade="notificacao",
+            detalhes={"total": total},
+        )
         db.commit()
 
     return {"message": "Notificações atualizadas", "total": total}

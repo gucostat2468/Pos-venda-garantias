@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { casosAPI } from '../api'
+import { casosAPI, usuariosAPI } from '../api'
 import { useAuth } from '../contexts/AuthContext'
 import { StatusBadge, RebateBadge, TipoBadge } from '../components/StatusBadge'
 import useMediaQuery from '../hooks/useMediaQuery'
@@ -79,6 +79,8 @@ const DOCS_FLUXO_OFICINA = [
     ],
   },
 ]
+const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
+const TIPO_DOCUMENTO_FOTO_ESTOQUE = 'Foto dos Pedidos - Estoque'
 
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
@@ -89,6 +91,9 @@ const normalizeText = (value) => String(value || '')
 const categorizarTipoDocumento = (tipoDocumento) => {
   const tipo = normalizeText(tipoDocumento)
   if (!tipo) return 'categoria_outros'
+  if (tipo.includes('foto') && tipo.includes('pedido') && tipo.includes('estoque')) {
+    return 'categoria_foto_pedido_estoque'
+  }
   if (
     ((tipo.includes('nota fiscal') && tipo.includes('remessa')) || tipo.includes('nf remessa'))
     && tipo.includes('huada')
@@ -126,7 +131,7 @@ export default function CasoDetail() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { id } = useParams()
   const [searchParams] = useSearchParams()
-  const { user, podeAssinar, isAdmin, isOperador } = useAuth()
+  const { user, podeAssinar, isAdmin, isOperador, isGestorEstoque } = useAuth()
   const [caso, setCaso] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState({})
@@ -136,6 +141,10 @@ export default function CasoDetail() {
   const [assinaObs, setAssinaObs] = useState('')
   const [assinando, setAssinando] = useState(false)
   const [assinandoDocumento, setAssinandoDocumento] = useState(false)
+  const [carregandoAssinaturaSalva, setCarregandoAssinaturaSalva] = useState(false)
+  const [assinaturaSalvaDisponivel, setAssinaturaSalvaDisponivel] = useState(false)
+  const [assinaturaSalvaAtualizadaEm, setAssinaturaSalvaAtualizadaEm] = useState('')
+  const [salvarAssinaturaPadrao, setSalvarAssinaturaPadrao] = useState(false)
   const [compilando, setCompilando] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState({})
@@ -237,6 +246,14 @@ export default function CasoDetail() {
       alert('Assine todos os documentos da etapa antes de confirmar a aprovação final.')
       return
     }
+    if (
+      etapaAssinaturaAtual === 'Estoque'
+      && assinaDecisao === 'Aprovado'
+      && !fotoEstoqueAtual
+    ) {
+      alert('Anexe a foto dos pedidos do estoque antes de concluir esta etapa.')
+      return
+    }
     setAssinando(true)
     try {
       await casosAPI.assinar(id, { status_decisao: assinaDecisao, observacao: assinaObs })
@@ -312,6 +329,22 @@ export default function CasoDetail() {
     isDrawingRef.current = false
   }
 
+  const carregarStatusAssinaturaSalva = useCallback(async ({ silent = true } = {}) => {
+    if (!silent) setCarregandoAssinaturaSalva(true)
+    try {
+      const res = await usuariosAPI.obterMinhaAssinatura()
+      const data = res.data || {}
+      setAssinaturaSalvaDisponivel(Boolean(data.tem_assinatura))
+      setAssinaturaSalvaAtualizadaEm(data.atualizado_em || '')
+    } catch (err) {
+      console.error(err)
+      setAssinaturaSalvaDisponivel(false)
+      setAssinaturaSalvaAtualizadaEm('')
+    } finally {
+      if (!silent) setCarregandoAssinaturaSalva(false)
+    }
+  }, [])
+
   const handleAssinarDocumentoAtual = async () => {
     if (!documentoAtualAssinatura) return
     if (!canvasTemAssinatura()) {
@@ -321,12 +354,37 @@ export default function CasoDetail() {
     setAssinandoDocumento(true)
     try {
       const assinaturaDataUrl = canvasRef.current.toDataURL('image/png')
-      await casosAPI.assinarDocumento(id, documentoAtualAssinatura.id, assinaturaDataUrl)
+      await casosAPI.assinarDocumento(id, documentoAtualAssinatura.id, {
+        assinatura_data_url: assinaturaDataUrl,
+        salvar_assinatura_usuario: salvarAssinaturaPadrao,
+      })
+      if (salvarAssinaturaPadrao) {
+        await carregarStatusAssinaturaSalva({ silent: true })
+      }
       await Promise.all([fetchCaso(), fetchCreditoCaso()])
       setAssinaturaDocStep(0)
+      setSalvarAssinaturaPadrao(false)
       limparCanvasAssinatura()
     } catch (err) {
       alert(err.response?.data?.detail || 'Erro ao assinar documento')
+    } finally {
+      setAssinandoDocumento(false)
+    }
+  }
+
+  const handleAssinarDocumentoComAssinaturaSalva = async () => {
+    if (!documentoAtualAssinatura) return
+    setAssinandoDocumento(true)
+    try {
+      await casosAPI.assinarDocumento(id, documentoAtualAssinatura.id, {
+        usar_assinatura_salva: true,
+      })
+      await Promise.all([fetchCaso(), fetchCreditoCaso()])
+      setAssinaturaDocStep(0)
+      setSalvarAssinaturaPadrao(false)
+      limparCanvasAssinatura()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Erro ao assinar com assinatura salva')
     } finally {
       setAssinandoDocumento(false)
     }
@@ -337,6 +395,11 @@ export default function CasoDetail() {
     const timer = setTimeout(() => limparCanvasAssinatura(), 0)
     return () => clearTimeout(timer)
   }, [assinaModal, assinaturaDocStep, caso?.id])
+
+  useEffect(() => {
+    if (!assinaModal) return
+    carregarStatusAssinaturaSalva({ silent: false }).catch((err) => console.error(err))
+  }, [assinaModal, carregarStatusAssinaturaSalva])
 
   const handleCompilarPdf = async () => {
     setCompilando(true)
@@ -450,6 +513,7 @@ export default function CasoDetail() {
     setAssinaDecisao('Aprovado')
     setAssinaObs('')
     setAssinaturaDocStep(0)
+    setSalvarAssinaturaPadrao(false)
     setAssinaModal(true)
   }
 
@@ -465,6 +529,8 @@ export default function CasoDetail() {
     ? 'Pos-venda'
     : caso?.status === 'Aguardando Aprovação Diretoria'
       ? 'Diretoria'
+      : caso?.status === STATUS_AGUARDANDO_ESTOQUE
+        ? 'Estoque'
       : null
   const documentosAssinaveis = (caso?.documentos || [])
     .filter((doc) => isDocumentoAssinavel(doc))
@@ -479,7 +545,13 @@ export default function CasoDetail() {
     Math.min(assinaturaDocStep, Math.max(documentosPendentesAssinatura.length - 1, 0))
   ] || null
   const documentoAtualEhPdf = isPdfFilename(documentoAtualAssinatura?.nome_arquivo)
-  const papelAssinaturaLabel = etapaAssinaturaAtual === 'Pos-venda' ? 'Gerente Pós-venda' : 'Diretor Comercial'
+  const papelAssinaturaLabel = etapaAssinaturaAtual === 'Pos-venda'
+    ? 'Gerente Pós-venda'
+    : etapaAssinaturaAtual === 'Diretoria'
+      ? 'Diretor Comercial'
+      : etapaAssinaturaAtual === 'Estoque'
+        ? 'Gestor de Estoque'
+        : 'Etapa de Assinatura'
 
   useEffect(() => {
     if (!autoSignRequested || autoSignHandledRef.current) return
@@ -552,9 +624,15 @@ export default function CasoDetail() {
     const aliasesNorm = aliases.map((alias) => normalizeText(alias))
     return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
   }
-  const isFinalOrReprovado = ['Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
-  const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
+  const usuarioEhGestorEstoque = user?.papel === 'gestor_estoque'
+  const isFinalOrReprovado = [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
+  const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado', 'Reprovado'].includes(caso.status)
   const canManageOfficeDocs = (isOperador || isAdmin) && !isLockedForOfficeEdition
+  const documentosFotoEstoque = (caso.documentos || []).filter(
+    (doc) => categorizarTipoDocumento(doc.tipo_documento) === 'categoria_foto_pedido_estoque'
+  )
+  const fotoEstoqueAtual = documentosFotoEstoque[0] || null
+  const podeAnexarFotoEstoque = isGestorEstoque && caso.status === STATUS_AGUARDANDO_ESTOQUE
   const assinaturasPorDocumento = (caso.documento_assinaturas || []).reduce((acc, sig) => {
     if (!acc[sig.documento_id]) acc[sig.documento_id] = []
     acc[sig.documento_id].push(sig)
@@ -573,10 +651,12 @@ export default function CasoDetail() {
     const lista = assinaturasPorDocumento[docId] || []
     const assinadoPos = lista.some((sig) => sig.etapa_fluxo === 'Pos-venda')
     const assinadoDir = lista.some((sig) => sig.etapa_fluxo === 'Diretoria')
+    const assinadoEstoque = lista.some((sig) => sig.etapa_fluxo === 'Estoque')
     return {
       assinadoPos,
       assinadoDir,
-      texto: `Assinaturas: Pós-venda ${assinadoPos ? '✓' : 'pendente'} · Diretor ${assinadoDir ? '✓' : 'pendente'}`,
+      assinadoEstoque,
+      texto: `Assinaturas: Pós-venda ${assinadoPos ? '✓' : 'pendente'} · Diretor ${assinadoDir ? '✓' : 'pendente'} · Estoque ${assinadoEstoque ? '✓' : 'pendente'}`,
     }
   }
 
@@ -585,13 +665,16 @@ export default function CasoDetail() {
   const acaoAssinaturaLabel = assinaDecisao === 'Aprovado'
     ? (etapaAssinaturaAtual === 'Pos-venda'
       ? 'Assinar e Encaminhar ao Diretor Comercial'
-      : 'Assinar e Encaminhar para Impressão')
+      : etapaAssinaturaAtual === 'Diretoria'
+        ? 'Assinar e Encaminhar ao Gestor de Estoque'
+        : 'Assinar e Concluir Caso')
     : 'Reprovar Caso'
+  const assinaturaEstoqueRegistrada = (caso.assinaturas || []).some((sig) => sig.etapa_fluxo === 'Estoque')
   const pipelineSteps = [
     { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
-    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
-    { label: 'Diretor Comercial', key: 'dir', done: ['Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
-    { label: 'Impressão 3 Vias', key: 'print', done: caso.status === 'Finalizado' },
+    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
+    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Impressão Oficina', 'Finalizado'].includes(caso.status) },
+    { label: 'Gestor de Estoque', key: 'estoque', done: assinaturaEstoqueRegistrada || caso.status === 'Finalizado' },
     { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
   ]
 
@@ -745,9 +828,15 @@ export default function CasoDetail() {
           )}
         </div>
 
-        {!isOperador && !isAdmin && (
+        {!isOperador && !isAdmin && !usuarioEhGestorEstoque && (
           <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
             Somente Time Oficina pode anexar, substituir ou remover documentos nesta etapa.
+          </div>
+        )}
+        {usuarioEhGestorEstoque && caso.status !== STATUS_AGUARDANDO_ESTOQUE && (
+          <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
+            A área de anexo da foto dos pedidos do estoque fica disponível quando o caso estiver em{' '}
+            <strong>{STATUS_AGUARDANDO_ESTOQUE}</strong>.
           </div>
         )}
 
@@ -811,9 +900,64 @@ export default function CasoDetail() {
             )
           })}
 
+          <div style={{ ...s.docRow, border: '1.5px dashed #fdba74', background: '#fff7ed' }}>
+            <div style={s.docIcon}>{fotoEstoqueAtual ? '📸' : '📦'}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>
+                Foto dos pedidos direcionados pelo estoque (Exclusivo Gestor de Estoque)
+              </div>
+              {fotoEstoqueAtual ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {fotoEstoqueAtual.nome_arquivo}
+                  {fotoEstoqueAtual.tamanho_bytes ? ` · ${(fotoEstoqueAtual.tamanho_bytes / 1024).toFixed(0)} KB` : ''}
+                  {' · '}
+                  {new Date(fotoEstoqueAtual.data_upload).toLocaleDateString('pt-BR')}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Nenhuma foto anexada para a etapa do estoque.
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: '#9a3412', marginTop: 3 }}>
+                Este anexo é obrigatório para concluir a assinatura final do Gestor de Estoque.
+                Aceita foto com qualquer extensão, desde que o conteúdo seja uma imagem válida.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {fotoEstoqueAtual && (
+                <button
+                  type="button"
+                  onClick={() => handleAbrirDocumento(fotoEstoqueAtual)}
+                  disabled={!!downloadingDocs[fotoEstoqueAtual.id]}
+                  style={s.docDownBtn}
+                >
+                  {downloadingDocs[fotoEstoqueAtual.id] ? 'Abrindo...' : 'Abrir'}
+                </button>
+              )}
+              {podeAnexarFotoEstoque && (
+                <>
+                  <label style={s.docUpBtn}>
+                    {uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE] ? '...' : fotoEstoqueAtual ? '🔄 Substituir' : '⬆ Enviar'}
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      ref={el => fileRefs.current[TIPO_DOCUMENTO_FOTO_ESTOQUE] = el}
+                      onChange={e => handleUpload(TIPO_DOCUMENTO_FOTO_ESTOQUE, e.target.files[0])}
+                      disabled={!!uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE]}
+                    />
+                  </label>
+                  {fotoEstoqueAtual && (
+                    <button onClick={() => handleDeleteDoc(fotoEstoqueAtual.id, fotoEstoqueAtual.nome_arquivo)} style={s.docDelBtn}>🗑</button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Outros documentos (não obrigatórios) */}
           {(caso.documentos || [])
             .filter(d => !docsObrigatoriosAliasesNorm.includes(normalizeText(d.tipo_documento)))
+            .filter(d => categorizarTipoDocumento(d.tipo_documento) !== 'categoria_foto_pedido_estoque')
             .map((doc) => {
               const assinaturaResumo = resumoAssinaturasDocumento(doc)
               return (
@@ -905,8 +1049,12 @@ export default function CasoDetail() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>
                       {sig.etapa_fluxo === 'Pos-venda'
-                        ? 'Vanier Afonso (Gerente de Pós-venda)'
-                        : 'Marcus Lawder (Diretor Comercial)'}
+                        ? `${sig.usuario?.nome || 'Responsável'} (Gerente de Pós-venda)`
+                        : sig.etapa_fluxo === 'Diretoria'
+                          ? `${sig.usuario?.nome || 'Responsável'} (Diretor Comercial)`
+                          : sig.etapa_fluxo === 'Estoque'
+                            ? `${sig.usuario?.nome || 'Responsável'} (Gestor de Estoque)`
+                            : `${sig.usuario?.nome || 'Responsável'} (${sig.etapa_fluxo})`}
                       {' — '}
                       <span style={{ color: sig.status_decisao === 'Aprovado' ? 'var(--success)' : 'var(--danger)' }}>
                         {sig.status_decisao}
@@ -930,6 +1078,17 @@ export default function CasoDetail() {
               ✍️ Este caso aguarda sua assinatura ({caso.status})
             </p>
             <button onClick={abrirModalAssinatura} style={s.signBtn}>Assinar Agora</button>
+          </div>
+        )}
+
+        {usuarioEhGestorEstoque && caso.status === STATUS_AGUARDANDO_ESTOQUE && (
+          <div style={{ marginTop: 16, padding: 16, background: '#fff7ed', borderRadius: 8, border: '1px solid #fdba74' }}>
+            <p style={{ fontSize: 13, color: '#9a3412', marginBottom: 10, fontWeight: 700 }}>
+              📦 Etapa final do estoque:
+            </p>
+            <p style={{ fontSize: 12, color: '#9a3412', marginBottom: 4 }}>1. Validar os documentos assináveis</p>
+            <p style={{ fontSize: 12, color: '#9a3412', marginBottom: 4 }}>2. Anexar foto dos pedidos direcionados</p>
+            <p style={{ fontSize: 12, color: '#9a3412', marginBottom: 0 }}>3. Assinar para concluir e mover ao histórico final</p>
           </div>
         )}
 
@@ -1019,8 +1178,34 @@ export default function CasoDetail() {
                         onPointerUp={handlePointerEnd}
                         onPointerLeave={handlePointerEnd}
                       />
+                      <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
+                          <input
+                            type="checkbox"
+                            checked={salvarAssinaturaPadrao}
+                            onChange={(e) => setSalvarAssinaturaPadrao(e.target.checked)}
+                          />
+                          Salvar esta assinatura para uso nas próximas assinaturas
+                        </label>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>
+                          {carregandoAssinaturaSalva
+                            ? 'Verificando assinatura salva...'
+                            : assinaturaSalvaDisponivel
+                              ? `Assinatura salva disponível${assinaturaSalvaAtualizadaEm ? ` (atualizada em ${formatApiDateTimeBR(assinaturaSalvaAtualizadaEm)})` : ''}.`
+                              : 'Nenhuma assinatura salva no perfil ainda.'}
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button type="button" onClick={limparCanvasAssinatura} style={s.outlineBtn}>Limpar Assinatura</button>
+                        <button
+                          type="button"
+                          onClick={handleAssinarDocumentoComAssinaturaSalva}
+                          disabled={assinandoDocumento || !assinaturaSalvaDisponivel}
+                          style={s.outlineBtn}
+                          title={assinaturaSalvaDisponivel ? 'Usar assinatura já salva no seu perfil' : 'Salve uma assinatura primeiro para usar esta opção'}
+                        >
+                          Assinar com Assinatura Salva
+                        </button>
                         <button
                           type="button"
                           onClick={handleAssinarDocumentoAtual}
@@ -1106,12 +1291,23 @@ export default function CasoDetail() {
                 Assine todos os documentos desta etapa para liberar a aprovação final do caso.
               </p>
             )}
+            {etapaAssinaturaAtual === 'Estoque' && assinaDecisao === 'Aprovado' && !fotoEstoqueAtual && (
+              <p style={{ fontSize: 12, color: '#92400e', marginBottom: 10 }}>
+                Anexe a foto dos pedidos do estoque para concluir a etapa final.
+              </p>
+            )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button onClick={() => { setAssinaModal(false); setAssinaObs('') }} style={{ ...s.cancelBtn, ...(isMobile ? s.modalActionBtnMobile : {}) }}>Cancelar</button>
               <button
                 onClick={handleAssinar}
-                disabled={assinando || assinandoDocumento || !todosDocumentosAssinadosEtapa || documentosAssinaveis.length === 0}
+                disabled={
+                  assinando
+                  || assinandoDocumento
+                  || !todosDocumentosAssinadosEtapa
+                  || documentosAssinaveis.length === 0
+                  || (etapaAssinaturaAtual === 'Estoque' && assinaDecisao === 'Aprovado' && !fotoEstoqueAtual)
+                }
                 style={{
                 ...s.primaryBtn,
                 ...(isMobile ? s.modalActionBtnMobile : {}),

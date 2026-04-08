@@ -10,11 +10,43 @@ const STATUS_OPTIONS = [
   'Aguardando Documentos',
   'Aguardando Aprovação Pós-Venda',
   'Aguardando Aprovação Diretoria',
+  'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
   'Aguardando Vídeo Descarte',
   'Finalizado',
   'Reprovado',
 ]
+
+const FILA_PARAM_TO_STATUS = {
+  pos_venda: 'Aguardando Aprovação Pós-Venda',
+  diretoria: 'Aguardando Aprovação Diretoria',
+  estoque: 'Aguardando Conferência Estoque',
+  impressao: 'Aguardando Impressão Oficina',
+}
+
+const STATUS_TO_FILA_PARAM = Object.entries(FILA_PARAM_TO_STATUS).reduce((acc, [fila, status]) => {
+  acc[status] = fila
+  return acc
+}, {})
+
+const normalizeStatus = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLowerCase()
+
+const STATUS_NORMALIZADO_TO_CANONICO = STATUS_OPTIONS.reduce((acc, status) => {
+  acc[normalizeStatus(status)] = status
+  return acc
+}, {})
+
+const resolverStatusBusca = (searchParams) => {
+  const fila = String(searchParams.get('fila') || '').trim().toLowerCase()
+  if (FILA_PARAM_TO_STATUS[fila]) return FILA_PARAM_TO_STATUS[fila]
+  const statusRaw = searchParams.get('status') || ''
+  const canonico = STATUS_NORMALIZADO_TO_CANONICO[normalizeStatus(statusRaw)]
+  return canonico || statusRaw
+}
 
 const FILA_ASSINATURA_CONFIG = {
   'Aguardando Aprovação Pós-Venda': {
@@ -27,6 +59,7 @@ const FILA_ASSINATURA_CONFIG = {
     historicoHint: 'Casos já assinados na etapa de Pós-venda e que seguiram no fluxo.',
     historicoStatus: new Set([
       'Aguardando Aprovação Diretoria',
+      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
@@ -42,31 +75,73 @@ const FILA_ASSINATURA_CONFIG = {
     historicoTitulo: 'Histórico de Assinados',
     historicoHint: 'Casos já assinados na etapa de Diretoria e que seguiram no fluxo.',
     historicoStatus: new Set([
+      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
     ]),
     acaoPendencia: 'Assinar Agora',
   },
+  'Aguardando Conferência Estoque': {
+    etapaApi: 'Estoque',
+    titulo: 'Sessão Gestor de Estoque',
+    subtitulo: 'Esteira exclusiva do estoque com pendências de assinatura e histórico de conclusões',
+    pendentesTitulo: 'Pendentes da Conferência de Estoque',
+    pendentesHint: 'Casos aguardando assinatura final do gestor de estoque.',
+    historicoTitulo: 'Histórico da Sessão de Estoque',
+    historicoHint: 'Casos já assinados pelo gestor de estoque e movidos para concluído.',
+    historicoStatus: new Set([
+      'Finalizado',
+      'Reprovado',
+    ]),
+    acaoPendencia: 'Conferir e Concluir',
+  },
 }
 
 export default function CasosList() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { user, podeAssinar } = useAuth()
+  const isGestorEstoque = user?.papel === 'gestor_estoque' || user?.papel === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
   const [casos, setCasos] = useState([])
   const [historicoAssinados, setHistoricoAssinados] = useState([])
   const [clientes, setClientes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [erroLista, setErroLista] = useState('')
   const [deletingCases, setDeletingCases] = useState({})
   const [busca, setBusca] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState(searchParams.get('status') || '')
+  const [filtroStatus, setFiltroStatus] = useState(() => resolverStatusBusca(searchParams))
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
   const filaConfig = FILA_ASSINATURA_CONFIG[filtroStatus] || null
 
+  const atualizarFiltroStatus = useCallback((novoStatus) => {
+    setFiltroStatus(novoStatus)
+    const next = new URLSearchParams(searchParams)
+    if (novoStatus) {
+      next.set('status', novoStatus)
+      const fila = STATUS_TO_FILA_PARAM[novoStatus]
+      if (fila) next.set('fila', fila)
+      else next.delete('fila')
+    } else {
+      next.delete('status')
+      next.delete('fila')
+    }
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
   const fetchCasos = useCallback(async ({ silent = false } = {}) => {
+    const acessoFilaEstoqueBloqueado =
+      filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
+    if (acessoFilaEstoqueBloqueado) {
+      setCasos([])
+      setHistoricoAssinados([])
+      if (!silent) setErroLista('')
+      if (!silent) setLoading(false)
+      return
+    }
     if (!silent) setLoading(true)
+    if (!silent) setErroLista('')
     try {
       const baseParams = {}
       if (filtroTipo) baseParams.tipo_processo = filtroTipo
@@ -109,13 +184,16 @@ export default function CasosList() {
       }
     } catch (e) {
       console.error(e)
+      if (!silent) {
+        setErroLista('Falha ao carregar os casos desta fila. Verifique a conexão e tente novamente.')
+      }
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [filtroStatus, filtroTipo, filtroCliente, busca, filaConfig])
+  }, [filtroStatus, filtroTipo, filtroCliente, busca, filaConfig, isGestorEstoque])
 
   useEffect(() => {
-    const statusUrl = searchParams.get('status') || ''
+    const statusUrl = resolverStatusBusca(searchParams)
     if (statusUrl !== filtroStatus) {
       setFiltroStatus(statusUrl)
     }
@@ -140,7 +218,7 @@ export default function CasosList() {
     setFiltroTipo('')
     setFiltroCliente('')
     if (!filaConfig) {
-      setFiltroStatus('')
+      atualizarFiltroStatus('')
     }
   }
 
@@ -162,6 +240,8 @@ export default function CasosList() {
   }
 
   const totalEncontrados = filaConfig ? casos.length + historicoAssinados.length : casos.length
+  const acessoFilaEstoqueBloqueado =
+    filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
 
   return (
     <div>
@@ -188,7 +268,7 @@ export default function CasosList() {
             onChange={e => setBusca(e.target.value)}
             style={{ ...s.input, flex: 1, minWidth: isMobile ? '100%' : 220 }}
           />
-          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={s.select}>
+          <select value={filtroStatus} onChange={e => atualizarFiltroStatus(e.target.value)} style={s.select}>
             <option value="">Todos os status</option>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -207,7 +287,19 @@ export default function CasosList() {
         </div>
       </div>
 
-      {filaConfig ? (
+      {erroLista && (
+        <div style={{ ...s.tableCard, marginBottom: 12, color: '#9f1239', background: '#fff1f2', borderColor: '#fecdd3' }}>
+          {erroLista}
+        </div>
+      )}
+
+      {acessoFilaEstoqueBloqueado && (
+        <div style={{ ...s.tableCard, marginBottom: 12, color: '#9a3412', background: '#fff7ed', borderColor: '#fdba74' }}>
+          Esta sessão é exclusiva do Gestor de Estoque.
+        </div>
+      )}
+
+      {filaConfig && !acessoFilaEstoqueBloqueado ? (
         <>
           <div style={{ ...s.queueKpis, ...(isMobile ? s.queueKpisMobile : {}) }}>
             <div style={s.queueKpiCard}>

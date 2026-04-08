@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -46,7 +47,7 @@ def listar_eventos_auditoria(
     modulo: Optional[str] = Query(None),
     acao: Optional[str] = Query(None),
     status: Optional[str] = Query(None, pattern="^(sucesso|falha)$"),
-    dias: int = Query(30, ge=0, le=3650),
+    dias: int = Query(0, ge=0, le=3650),
     limite: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -78,7 +79,7 @@ def resumo_auditoria(
     usuario_id: Optional[int] = Query(None),
     modulo: Optional[str] = Query(None),
     acao: Optional[str] = Query(None),
-    dias: int = Query(30, ge=0, le=3650),
+    dias: int = Query(0, ge=0, le=3650),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(require_roles("admin", "gerente_pos_venda", "diretor_comercial")),
 ):
@@ -122,5 +123,50 @@ def resumo_auditoria(
         "total_falha": total_falha,
         "por_modulo": por_modulo,
         "por_acao": por_acao,
+        "ultimo_evento_em": ultimo_evento_em,
+    }
+
+
+@router.get("/integridade")
+def integridade_auditoria(
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(require_roles("admin", "gerente_pos_venda", "diretor_comercial")),
+):
+    total_eventos = db.query(models.AuditoriaEvento).count()
+    primeiro_evento_em = db.query(func.min(models.AuditoriaEvento.criado_em)).scalar()
+    ultimo_evento_em = db.query(func.max(models.AuditoriaEvento.criado_em)).scalar()
+
+    db_dialect = db.bind.dialect.name if db.bind is not None else "desconhecido"
+    quick_check = "indisponivel"
+    append_only_protegido = False
+    triggers_presentes: List[str] = []
+
+    if db_dialect == "sqlite":
+        quick_check_row = db.execute(text("PRAGMA quick_check")).fetchone()
+        quick_check = str(quick_check_row[0]) if quick_check_row else "erro"
+        trigger_rows = db.execute(
+            text(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type='trigger'
+                  AND name IN ('trg_auditoria_eventos_block_update', 'trg_auditoria_eventos_block_delete')
+                ORDER BY name
+                """
+            )
+        ).fetchall()
+        triggers_presentes = [str(row[0]) for row in trigger_rows]
+        append_only_protegido = {
+            "trg_auditoria_eventos_block_update",
+            "trg_auditoria_eventos_block_delete",
+        }.issubset(set(triggers_presentes))
+
+    return {
+        "db_dialect": db_dialect,
+        "quick_check": quick_check,
+        "auditoria_append_only_protegido": append_only_protegido,
+        "triggers_auditoria_presentes": triggers_presentes,
+        "total_eventos": total_eventos,
+        "primeiro_evento_em": primeiro_evento_em,
         "ultimo_evento_em": ultimo_evento_em,
     }

@@ -2,8 +2,6 @@ import os
 import shutil
 import uuid
 import unicodedata
-import base64
-import binascii
 import io
 import mimetypes
 from datetime import datetime, date, timezone, timedelta
@@ -18,12 +16,18 @@ from sqlalchemy import func
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from PIL import Image, UnidentifiedImageError
 
 from database import get_db
 import models, schemas
 from auth import get_current_user, get_current_user_download, require_roles
 from utils.pdf_compiler import compile_pdf
 from services.auditoria import gerar_diff, registrar_evento_auditoria
+from services.signature_store import (
+    decode_signature_data_url,
+    salvar_assinatura_usuario,
+    carregar_assinatura_usuario_bytes,
+)
 
 router = APIRouter()
 
@@ -45,7 +49,14 @@ DOCS_OPCIONAIS = {
 }
 
 STATUS_AGUARDANDO_IMPRESSAO = "Aguardando Impressão Oficina"
-STATUS_BLOQUEIA_EDICAO = {"Aguardando Aprovação Diretoria", STATUS_AGUARDANDO_IMPRESSAO, "Finalizado", "Reprovado"}
+STATUS_AGUARDANDO_ESTOQUE = "Aguardando Conferência Estoque"
+STATUS_BLOQUEIA_EDICAO = {
+    "Aguardando Aprovação Diretoria",
+    STATUS_AGUARDANDO_ESTOQUE,
+    STATUS_AGUARDANDO_IMPRESSAO,
+    "Finalizado",
+    "Reprovado",
+}
 STATUS_AGUARDANDO_DOCUMENTOS = "Aguardando Documentos"
 STATUS_AGUARDANDO_POS_VENDA = "Aguardando Aprovação Pós-Venda"
 STATUS_AGUARDANDO_DIRETORIA = "Aguardando Aprovação Diretoria"
@@ -54,9 +65,10 @@ STATUS_FLOW = {
     "Aguardando Documentos": 0,
     "Aguardando Aprovação Pós-Venda": 1,
     "Aguardando Aprovação Diretoria": 2,
-    STATUS_AGUARDANDO_IMPRESSAO: 3,
-    "Finalizado": 4,
-    "Reprovado": 5,
+    STATUS_AGUARDANDO_ESTOQUE: 3,
+    STATUS_AGUARDANDO_IMPRESSAO: 4,
+    "Finalizado": 5,
+    "Reprovado": 6,
     "Aguardando Vídeo Descarte": 3,  # legado
 }
 
@@ -88,6 +100,8 @@ def _categorizar_tipo_documento(tipo_documento: Optional[str]) -> str:
     tipo = _normalizar_texto(tipo_documento)
     if not tipo:
         return "categoria_outros"
+    if "foto" in tipo and "pedido" in tipo and "estoque" in tipo:
+        return "categoria_foto_pedido_estoque"
     if (
         (("nota fiscal" in tipo and "remessa" in tipo) or "nf remessa" in tipo)
         and "huada" in tipo
@@ -136,6 +150,30 @@ def _resolver_mime_type(
     return guessed or "application/octet-stream"
 
 
+def _arquivo_parece_imagem(
+    nome_arquivo: Optional[str],
+    mime_reportado: Optional[str],
+    content: bytes,
+) -> bool:
+    mime = (mime_reportado or "").split(";")[0].strip().lower()
+    if mime.startswith("image/"):
+        return True
+
+    guessed = mimetypes.guess_type(nome_arquivo or "")[0]
+    if guessed and guessed.startswith("image/"):
+        return True
+
+    if not content:
+        return False
+
+    try:
+        with Image.open(io.BytesIO(content)) as img:
+            img.verify()
+        return True
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+
+
 def _content_disposition(filename: str, disposition: str) -> str:
     safe_name = (filename or "arquivo").replace('"', "")
     encoded_name = quote(safe_name)
@@ -163,6 +201,22 @@ def _documentos_assinaveis(caso: models.CasoGarantia) -> List[models.Documento]:
     ]
 
 
+def _documento_foto_pedido_estoque(doc: models.Documento) -> bool:
+    return _categorizar_tipo_documento(doc.tipo_documento) == "categoria_foto_pedido_estoque"
+
+
+def _check_foto_pedido_estoque(caso: models.CasoGarantia) -> bool:
+    return any(_documento_foto_pedido_estoque(doc) for doc in (caso.documentos or []))
+
+
+def _etapas_requeridas_para_dossie(caso: models.CasoGarantia) -> List[str]:
+    etapas = ["Pos-venda", "Diretoria"]
+    possui_assinatura_estoque = any(sig.etapa_fluxo == "Estoque" for sig in (caso.assinaturas or []))
+    if possui_assinatura_estoque:
+        etapas.append("Estoque")
+    return etapas
+
+
 def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.Usuario) -> str:
     if current_user.papel == "gerente_pos_venda":
         if caso.status != STATUS_AGUARDANDO_POS_VENDA:
@@ -178,11 +232,20 @@ def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.U
                 detail=f"Caso não está aguardando aprovação do diretor comercial. Status atual: {caso.status}"
             )
         return "Diretoria"
+    if current_user.papel == "gestor_estoque":
+        if caso.status != STATUS_AGUARDANDO_ESTOQUE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Caso não está aguardando conferência do gestor de estoque. Status atual: {caso.status}"
+            )
+        return "Estoque"
     if current_user.papel == "admin":
         if caso.status == STATUS_AGUARDANDO_POS_VENDA:
             return "Pos-venda"
         if caso.status == STATUS_AGUARDANDO_DIRETORIA:
             return "Diretoria"
+        if caso.status == STATUS_AGUARDANDO_ESTOQUE:
+            return "Estoque"
         raise HTTPException(status_code=400, detail=f"Caso não está aguardando aprovação. Status: {caso.status}")
     raise HTTPException(status_code=403, detail="Você não tem permissão para assinar este caso")
 
@@ -227,6 +290,7 @@ def _validar_documentos_assinados_por_etapas(
     etapa_label = {
         "Pos-venda": "Gerente Pós-venda",
         "Diretoria": "Diretor Comercial",
+        "Estoque": "Gestor de Estoque",
     }
 
     pendencias: List[str] = []
@@ -262,6 +326,14 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
 
 def _codigo_caso(caso: models.CasoGarantia) -> str:
     return caso.dji_case_id or f"Caso #{caso.id}"
+
+
+def _nome_usuario(usuario: Optional[models.Usuario]) -> str:
+    if usuario and usuario.nome:
+        return usuario.nome
+    if usuario and usuario.id:
+        return f"Usuário #{usuario.id}"
+    return "Usuário"
 
 
 def _criar_notificacao(
@@ -311,10 +383,113 @@ def _notificar_papel(
         )
 
 
-def _remover_assinaturas_documento(documento_id: int, db: Session) -> None:
-    assinaturas = db.query(models.DocumentoAssinatura).filter(
-        models.DocumentoAssinatura.documento_id == documento_id
-    ).all()
+def _notificar_operacao_todos(
+    db: Session,
+    tipo: str,
+    titulo: str,
+    mensagem: str,
+    case_id: Optional[int] = None,
+    excluir_usuario_id: Optional[int] = None,
+) -> None:
+    usuarios = db.query(models.Usuario).filter(models.Usuario.ativo == 1).all()
+    for usuario in usuarios:
+        if excluir_usuario_id is not None and usuario.id == excluir_usuario_id:
+            continue
+        _criar_notificacao(
+            db=db,
+            usuario_id=usuario.id,
+            tipo=tipo,
+            titulo=titulo,
+            mensagem=mensagem,
+            case_id=case_id,
+        )
+
+
+def _snapshot_caso_para_exclusao(caso: models.CasoGarantia) -> dict:
+    docs = list(caso.documentos or [])
+    assinaturas_caso = list(caso.assinaturas or [])
+    assinaturas_doc = list(caso.documento_assinaturas or [])
+    docs_map = {doc.id: doc for doc in docs}
+
+    return {
+        "caso": {
+            "id": caso.id,
+            "codigo": _codigo_caso(caso),
+            "tipo_processo": caso.tipo_processo,
+            "status": caso.status,
+            "status_rebate": caso.status_rebate,
+            "cliente_id": caso.cliente_id,
+            "cliente_razao_social": caso.cliente.razao_social if caso.cliente else None,
+            "produto_nome": caso.produto_nome,
+            "produto_modelo": caso.produto_modelo,
+            "produto_sn": caso.produto_sn,
+            "data_entrada": caso.data_entrada,
+            "observacoes": caso.observacoes,
+            "criado_em": caso.criado_em,
+            "atualizado_em": caso.atualizado_em,
+        },
+        "qtd_documentos": len(docs),
+        "documentos": [
+            {
+                "id": doc.id,
+                "tipo_documento": doc.tipo_documento,
+                "nome_arquivo": doc.nome_arquivo,
+                "mime_type": doc.mime_type,
+                "tamanho_bytes": doc.tamanho_bytes,
+                "data_upload": doc.data_upload,
+                "path_arquivo": doc.path_arquivo,
+            }
+            for doc in docs
+        ],
+        "qtd_assinaturas_caso": len(assinaturas_caso),
+        "assinaturas_caso": [
+            {
+                "id": sig.id,
+                "usuario_id": sig.usuario_id,
+                "usuario_nome": sig.usuario.nome if sig.usuario else None,
+                "etapa_fluxo": sig.etapa_fluxo,
+                "status_decisao": sig.status_decisao,
+                "observacao": sig.observacao,
+                "data_assinatura": sig.data_assinatura,
+            }
+            for sig in assinaturas_caso
+        ],
+        "qtd_assinaturas_documento": len(assinaturas_doc),
+        "assinaturas_documento": [
+            {
+                "id": sig.id,
+                "documento_id": sig.documento_id,
+                "documento_nome": docs_map.get(sig.documento_id).nome_arquivo if docs_map.get(sig.documento_id) else None,
+                "usuario_id": sig.usuario_id,
+                "usuario_nome": sig.usuario.nome if sig.usuario else None,
+                "etapa_fluxo": sig.etapa_fluxo,
+                "data_assinatura": sig.data_assinatura,
+                "path_assinatura": sig.path_assinatura,
+            }
+            for sig in assinaturas_doc
+        ],
+    }
+
+
+def _remover_assinaturas_documento(documento_id: int, db: Session) -> List[dict]:
+    assinaturas = (
+        db.query(models.DocumentoAssinatura)
+        .options(joinedload(models.DocumentoAssinatura.usuario))
+        .filter(models.DocumentoAssinatura.documento_id == documento_id)
+        .all()
+    )
+    snapshot: List[dict] = []
+    for assinatura_doc in assinaturas:
+        snapshot.append(
+            {
+                "id": assinatura_doc.id,
+                "usuario_id": assinatura_doc.usuario_id,
+                "usuario_nome": assinatura_doc.usuario.nome if assinatura_doc.usuario else None,
+                "etapa_fluxo": assinatura_doc.etapa_fluxo,
+                "data_assinatura": assinatura_doc.data_assinatura,
+                "path_assinatura": assinatura_doc.path_assinatura,
+            }
+        )
     for assinatura_doc in assinaturas:
         if assinatura_doc.path_assinatura and os.path.exists(assinatura_doc.path_assinatura):
             try:
@@ -322,6 +497,7 @@ def _remover_assinaturas_documento(documento_id: int, db: Session) -> None:
             except OSError:
                 pass
         db.delete(assinatura_doc)
+    return snapshot
 
 
 def _path_pdf_original(path_arquivo: str) -> str:
@@ -371,6 +547,8 @@ def _etapa_ordem(etapa_fluxo: str) -> int:
         return 0
     if etapa_fluxo == "Diretoria":
         return 1
+    if etapa_fluxo == "Estoque":
+        return 2
     return 9
 
 
@@ -428,6 +606,7 @@ def _carimbar_assinaturas_no_pdf_documento(
                 etapa = (
                     "Gerente Pós-venda" if assinatura.etapa_fluxo == "Pos-venda"
                     else "Diretor Comercial" if assinatura.etapa_fluxo == "Diretoria"
+                    else "Gestor de Estoque" if assinatura.etapa_fluxo == "Estoque"
                     else assinatura.etapa_fluxo
                 )
                 nome = assinatura.usuario.nome if assinatura.usuario else f"Usuário #{assinatura.usuario_id}"
@@ -521,6 +700,7 @@ def _gerar_pdf_com_pagina_assinaturas(
             etapa = (
                 "Gerente Pós-venda" if assinatura.etapa_fluxo == "Pos-venda"
                 else "Diretor Comercial" if assinatura.etapa_fluxo == "Diretoria"
+                else "Gestor de Estoque" if assinatura.etapa_fluxo == "Estoque"
                 else assinatura.etapa_fluxo
             )
             nome = assinatura.usuario.nome if assinatura.usuario else f"Usuário #{assinatura.usuario_id}"
@@ -606,7 +786,7 @@ def listar_casos(
     tipo_processo: Optional[str] = Query(None),
     cliente_id: Optional[int] = Query(None),
     busca: Optional[str] = Query(None),
-    assinatura_etapa: Optional[str] = Query(None, pattern="^(Pos-venda|Diretoria)$"),
+    assinatura_etapa: Optional[str] = Query(None, pattern="^(Pos-venda|Diretoria|Estoque)$"),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
@@ -649,10 +829,12 @@ def dashboard_stats(
         models.CasoGarantia.status.in_([
             "Aguardando Aprovação Pós-Venda",
             "Aguardando Aprovação Diretoria",
+            STATUS_AGUARDANDO_ESTOQUE,
         ])
     ).count()
     finalizados = db.query(models.CasoGarantia).filter(
         models.CasoGarantia.status.in_([
+            STATUS_AGUARDANDO_ESTOQUE,
             STATUS_AGUARDANDO_IMPRESSAO,
             "Finalizado",
         ])
@@ -725,6 +907,16 @@ def criar_caso(
         ),
         case_id=caso.id,
     )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_caso_criado",
+        titulo="Novo caso aberto na operação",
+        mensagem=(
+            f"{current_user.nome or 'Usuário'} abriu {codigo}. "
+            f"Status inicial: {caso.status}."
+        ),
+        case_id=caso.id,
+    )
     db.commit()
 
     return _load_caso(caso.id, db)
@@ -738,8 +930,45 @@ def obter_caso(
 ):
     caso = _load_caso(caso_id, db)
     if caso.status == STATUS_AGUARDANDO_DOCUMENTOS and _check_docs_completos(caso):
+        codigo = _codigo_caso(caso)
         caso.status = STATUS_AGUARDANDO_POS_VENDA
         caso.atualizado_em = datetime.utcnow()
+        _notificar_papel(
+            db,
+            papel="gerente_pos_venda",
+            tipo="novo_caso_pos_venda",
+            titulo="Solicitação pronta para assinatura do Pós-venda",
+            mensagem=(
+                f"{_nome_usuario(current_user)} confirmou documentação mínima no {codigo}. "
+                "Aguardando assinatura do Gerente de Pós-venda."
+            ),
+            case_id=caso.id,
+        )
+        _notificar_operacao_todos(
+            db,
+            tipo="operacao_fluxo_movido",
+            titulo="Caso avançou na esteira",
+            mensagem=(
+                f"{codigo} avançou de '{STATUS_AGUARDANDO_DOCUMENTOS}' para "
+                f"'{STATUS_AGUARDANDO_POS_VENDA}'."
+            ),
+            case_id=caso.id,
+        )
+        registrar_evento_auditoria(
+            db,
+            acao="caso_movido_para_pos_venda_auto",
+            modulo="casos_fluxo",
+            descricao=f"Caso {codigo} avançou automaticamente para assinatura do Pós-venda.",
+            usuario=current_user,
+            case_id=caso.id,
+            entidade="caso_garantia",
+            entidade_id=caso.id,
+            detalhes={
+                "status_de": STATUS_AGUARDANDO_DOCUMENTOS,
+                "status_para": STATUS_AGUARDANDO_POS_VENDA,
+                "origem": "obter_caso_auto",
+            },
+        )
         db.commit()
         caso = _load_caso(caso_id, db)
     return caso
@@ -833,6 +1062,7 @@ def atualizar_caso(
         "observacoes": caso.observacoes,
         "status_rebate": caso.status_rebate,
     }
+    alteracoes = gerar_diff(before, after)
     registrar_evento_auditoria(
         db,
         acao="caso_atualizado",
@@ -842,8 +1072,23 @@ def atualizar_caso(
         case_id=caso.id,
         entidade="caso_garantia",
         entidade_id=caso.id,
-        detalhes={"alteracoes": gerar_diff(before, after)},
+        detalhes={"alteracoes": alteracoes},
     )
+    if alteracoes:
+        campos_alterados = sorted(alteracoes.keys())
+        resumo_campos = ", ".join(campos_alterados[:5])
+        if len(campos_alterados) > 5:
+            resumo_campos += f" e mais {len(campos_alterados) - 5} campo(s)"
+        _notificar_operacao_todos(
+            db,
+            tipo="operacao_caso_atualizado",
+            titulo="Caso atualizado",
+            mensagem=(
+                f"{_nome_usuario(current_user)} atualizou {_codigo_caso(caso)}. "
+                f"Campos alterados: {resumo_campos}."
+            ),
+            case_id=caso.id,
+        )
     db.commit()
     return _load_caso(caso_id, db)
 
@@ -852,12 +1097,11 @@ def atualizar_caso(
 def deletar_caso(
     caso_id: int,
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gerente_pos_venda", "diretor_comercial"))
+    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gerente_pos_venda", "diretor_comercial", "gestor_estoque"))
 ):
-    caso = db.query(models.CasoGarantia).filter(models.CasoGarantia.id == caso_id).first()
-    if not caso:
-        raise HTTPException(status_code=404, detail="Caso não encontrado")
+    caso = _load_caso(caso_id, db)
     codigo = _codigo_caso(caso)
+    snapshot = _snapshot_caso_para_exclusao(caso)
     # Remover arquivos físicos
     case_dir = os.path.join(UPLOADS_DIR, str(caso_id))
     if os.path.exists(case_dir):
@@ -875,7 +1119,18 @@ def deletar_caso(
             "status": caso.status,
             "status_rebate": caso.status_rebate,
             "cliente_id": caso.cliente_id,
+            "snapshot_exclusao": snapshot,
         },
+    )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_caso_excluido",
+        titulo="Caso excluído da operação",
+        mensagem=(
+            f"{_nome_usuario(current_user)} excluiu {codigo}. "
+            f"Último status conhecido: {caso.status}."
+        ),
+        case_id=caso.id,
     )
     db.delete(caso)
     db.commit()
@@ -894,15 +1149,43 @@ async def upload_documento(
     tipo_documento: str = Form(...),
     arquivo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador"))
+    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gestor_estoque"))
 ):
     caso = _load_caso(caso_id, db)
-    if caso.status in STATUS_BLOQUEIA_EDICAO:
+    categoria_upload = _categorizar_tipo_documento(tipo_documento)
+    upload_foto_estoque = categoria_upload == "categoria_foto_pedido_estoque"
+    permitido_estoque = (
+        caso.status == STATUS_AGUARDANDO_ESTOQUE
+        and current_user.papel in {"gestor_estoque", "admin"}
+        and upload_foto_estoque
+    )
+    if caso.status in STATUS_BLOQUEIA_EDICAO and not permitido_estoque:
         raise HTTPException(status_code=400, detail="Caso em etapa final. Não é possível adicionar documentos.")
+    if current_user.papel == "gestor_estoque":
+        if caso.status != STATUS_AGUARDANDO_ESTOQUE:
+            raise HTTPException(status_code=400, detail="O Gestor de Estoque só pode anexar documentos na etapa de estoque.")
+        if not upload_foto_estoque:
+            raise HTTPException(
+                status_code=400,
+                detail="Nesta etapa o Gestor de Estoque só pode anexar a foto dos pedidos direcionados.",
+            )
     status_anterior = caso.status
 
+    content = await arquivo.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Arquivo muito grande. Máximo: 50MB")
+
     ext = Path(arquivo.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if upload_foto_estoque:
+        if not _arquivo_parece_imagem(arquivo.filename, arquivo.content_type, content):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "O anexo da sessão do Gestor de Estoque deve ser uma foto/imagem válida. "
+                    "Envie um arquivo de imagem."
+                ),
+            )
+    elif ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Extensão não permitida: {ext}")
 
     # Criar diretório do caso
@@ -913,10 +1196,6 @@ async def upload_documento(
     unique_name = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(case_dir, unique_name)
 
-    content = await arquivo.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Arquivo muito grande. Máximo: 50MB")
-
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -926,8 +1205,20 @@ async def upload_documento(
         models.Documento.tipo_documento == tipo_documento
     ).first()
     substituiu_documento = existing is not None
+    documento_substituido_snapshot = None
     if existing:
-        _remover_assinaturas_documento(existing.id, db)
+        assinaturas_removidas = _remover_assinaturas_documento(existing.id, db)
+        documento_substituido_snapshot = {
+            "id": existing.id,
+            "tipo_documento": existing.tipo_documento,
+            "nome_arquivo": existing.nome_arquivo,
+            "mime_type": existing.mime_type,
+            "tamanho_bytes": existing.tamanho_bytes,
+            "data_upload": existing.data_upload,
+            "path_arquivo": existing.path_arquivo,
+            "qtd_assinaturas_documento_removidas": len(assinaturas_removidas),
+            "assinaturas_documento_removidas": assinaturas_removidas,
+        }
         if os.path.exists(existing.path_arquivo):
             os.remove(existing.path_arquivo)
         _remover_backup_pdf_original(existing.path_arquivo)
@@ -962,7 +1253,18 @@ async def upload_documento(
             "tipo_documento": tipo_documento,
             "tamanho_bytes": doc.tamanho_bytes,
             "status_antes_upload": status_anterior,
+            "documento_substituido": documento_substituido_snapshot,
         },
+    )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_documento_substituido" if substituiu_documento else "operacao_documento_anexado",
+        titulo="Documento atualizado na esteira" if substituiu_documento else "Documento anexado na esteira",
+        mensagem=(
+            f"{_nome_usuario(current_user)} {'substituiu' if substituiu_documento else 'anexou'} "
+            f"'{tipo_documento}' em {_codigo_caso(caso)} (arquivo: {doc.nome_arquivo})."
+        ),
+        case_id=caso_id,
     )
 
     # Atualizar status para assinatura do gerente de pós-venda ao atingir documentação mínima
@@ -985,6 +1287,16 @@ async def upload_documento(
                 ),
                 case_id=caso_refreshed.id,
             )
+            _notificar_operacao_todos(
+                db,
+                tipo="operacao_fluxo_movido",
+                titulo="Caso avançou na esteira",
+                mensagem=(
+                    f"{codigo} avançou de '{status_pos_upload}' para "
+                    f"'{STATUS_AGUARDANDO_POS_VENDA}' após anexação de remessa."
+                ),
+                case_id=caso_refreshed.id,
+            )
             registrar_evento_auditoria(
                 db,
                 acao="caso_movido_para_pos_venda",
@@ -999,6 +1311,16 @@ async def upload_documento(
             db.commit()
     elif status_pos_upload == STATUS_AGUARDANDO_POS_VENDA:
         caso_refreshed.status = STATUS_AGUARDANDO_DOCUMENTOS
+        _notificar_operacao_todos(
+            db,
+            tipo="operacao_fluxo_retrocedido",
+            titulo="Caso retornou etapa anterior",
+            mensagem=(
+                f"{_codigo_caso(caso_refreshed)} retornou de '{status_pos_upload}' para "
+                f"'{STATUS_AGUARDANDO_DOCUMENTOS}' após atualização de documentos."
+            ),
+            case_id=caso_refreshed.id,
+        )
         registrar_evento_auditoria(
             db,
             acao="caso_retrocedido_para_documentos",
@@ -1137,20 +1459,42 @@ def assinar_documento_individual(
             detail="Somente documentos de Remessa (DRONEPRO/HUADA) participam da assinatura documental.",
         )
 
-    prefix = "data:image/png;base64,"
-    assinatura_raw = body.assinatura_data_url or ""
-    if not assinatura_raw.startswith(prefix):
-        raise HTTPException(status_code=400, detail="Assinatura inválida. Envie imagem PNG em base64")
+    assinatura_origem = "canvas"
+    if body.usar_assinatura_salva:
+        try:
+            assinatura_bytes = carregar_assinatura_usuario_bytes(current_user)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Nenhuma assinatura salva encontrada no seu perfil. Desenhe e salve uma assinatura primeiro.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Assinatura salva inválida: {exc}",
+            ) from exc
+        assinatura_origem = "assinatura_salva"
+    else:
+        try:
+            assinatura_bytes = decode_signature_data_url(body.assinatura_data_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    try:
-        assinatura_bytes = base64.b64decode(assinatura_raw[len(prefix):], validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(status_code=400, detail="Assinatura inválida (base64 malformado)")
-
-    if len(assinatura_bytes) < 300:
-        raise HTTPException(status_code=400, detail="Assinatura muito pequena. Desenhe a assinatura antes de confirmar")
-    if len(assinatura_bytes) > 2 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Assinatura muito grande. Limite de 2MB")
+    if body.salvar_assinatura_usuario:
+        try:
+            salvar_assinatura_usuario(current_user, assinatura_bytes, UPLOADS_DIR)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        registrar_evento_auditoria(
+            db,
+            acao="assinatura_padrao_salva_via_fluxo",
+            modulo="assinaturas",
+            descricao=f"Assinatura padrão salva por {_nome_usuario(current_user)} durante assinatura de documento.",
+            usuario=current_user,
+            case_id=caso_id,
+            entidade="usuario",
+            entidade_id=current_user.id,
+        )
 
     assinatura_dir = os.path.join(UPLOADS_DIR, str(caso_id), SIGNATURES_SUBDIR)
     os.makedirs(assinatura_dir, exist_ok=True)
@@ -1232,7 +1576,19 @@ def assinar_documento_individual(
             "documento_nome": doc.nome_arquivo,
             "etapa_fluxo": etapa,
             "assinatura_substituida": existing is not None,
+            "assinatura_origem": assinatura_origem,
+            "assinatura_salva_no_perfil": bool(body.salvar_assinatura_usuario),
         },
+    )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_documento_assinado",
+        titulo="Documento assinado na esteira",
+        mensagem=(
+            f"{_nome_usuario(current_user)} assinou '{doc.nome_arquivo}' "
+            f"na etapa {etapa} do {_codigo_caso(caso)}."
+        ),
+        case_id=caso_id,
     )
     db.commit()
     db.refresh(assinatura)
@@ -1244,21 +1600,26 @@ def deletar_documento(
     caso_id: int,
     doc_id: int,
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador"))
+    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gestor_estoque"))
 ):
     caso = _load_caso(caso_id, db)
-    if caso.status in STATUS_BLOQUEIA_EDICAO:
-        raise HTTPException(status_code=400, detail="Caso em etapa final.")
-    status_anterior = caso.status
-
     doc = db.query(models.Documento).filter(
         models.Documento.id == doc_id,
         models.Documento.case_id == caso_id
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
+    if caso.status in STATUS_BLOQUEIA_EDICAO:
+        permitido_estoque = (
+            caso.status == STATUS_AGUARDANDO_ESTOQUE
+            and current_user.papel in {"gestor_estoque", "admin"}
+            and _documento_foto_pedido_estoque(doc)
+        )
+        if not permitido_estoque:
+            raise HTTPException(status_code=400, detail="Caso em etapa final.")
+    status_anterior = caso.status
 
-    _remover_assinaturas_documento(doc.id, db)
+    assinaturas_removidas = _remover_assinaturas_documento(doc.id, db)
 
     if os.path.exists(doc.path_arquivo):
         os.remove(doc.path_arquivo)
@@ -1288,7 +1649,19 @@ def deletar_documento(
             "tipo_documento": doc_tipo,
             "status_de": status_anterior,
             "status_para": caso_db.status,
+            "qtd_assinaturas_documento_removidas": len(assinaturas_removidas),
+            "assinaturas_documento_removidas": assinaturas_removidas,
         },
+    )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_documento_excluido",
+        titulo="Documento removido da esteira",
+        mensagem=(
+            f"{_nome_usuario(current_user)} removeu '{doc_tipo}' de {_codigo_caso(caso_db)}. "
+            f"Status: {status_anterior} -> {caso_db.status}."
+        ),
+        case_id=caso_id,
     )
 
     db.commit()
@@ -1360,16 +1733,42 @@ def assinar_caso(
             ["Pos-venda", "Diretoria"],
             "aprovação final da diretoria",
         )
-        caso_db.status = STATUS_AGUARDANDO_IMPRESSAO
+        caso_db.status = STATUS_AGUARDANDO_ESTOQUE
         caso_db.status_rebate = "Aguardando Apuração"
         _notificar_papel(
             db,
-            papel="operador",
-            tipo="pronto_impressao_finalizacao",
-            titulo="Pronto para imprimir e finalizar",
+            papel="gestor_estoque",
+            tipo="pendencia_assinatura_estoque",
+            titulo="Assinatura pendente: Gestor de Estoque",
             mensagem=(
                 f"{codigo} recebeu as assinaturas de Pós-venda e Diretoria Comercial. "
-                "O caso já está disponível na fila Imprimir e Finalizar."
+                "Aguardando conferência do Gestor de Estoque com anexo da foto dos pedidos e assinatura final."
+            ),
+            case_id=caso_id,
+        )
+    elif etapa == "Estoque":
+        _validar_documentos_assinados_por_etapas(
+            caso,
+            ["Pos-venda", "Diretoria", "Estoque"],
+            "conclusão do gestor de estoque",
+        )
+        if not _check_foto_pedido_estoque(caso):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Fluxo bloqueado para conclusão. "
+                    "Anexe a foto dos pedidos direcionados pelo estoque antes de confirmar."
+                ),
+            )
+        caso_db.status = "Finalizado"
+        caso_db.status_rebate = "Finalizado"
+        _notificar_papel(
+            db,
+            papel="operador",
+            tipo="caso_finalizado_estoque",
+            titulo="Caso concluído pelo Gestor de Estoque",
+            mensagem=(
+                f"{codigo} foi concluído pelo Gestor de Estoque com foto dos pedidos e assinatura final."
             ),
             case_id=caso_id,
         )
@@ -1394,12 +1793,42 @@ def assinar_caso(
             "status_para": caso_db.status,
         },
     )
+    if body.status_decisao == "Reprovado":
+        _notificar_operacao_todos(
+            db,
+            tipo="operacao_caso_reprovado",
+            titulo="Caso reprovado na esteira",
+            mensagem=(
+                f"{_nome_usuario(current_user)} reprovou {codigo} na etapa {etapa}. "
+                f"Status: {status_anterior} -> {caso_db.status}."
+            ),
+            case_id=caso_id,
+        )
+    else:
+        tipo_notificacao = "operacao_caso_assinado"
+        titulo_notificacao = "Assinatura de etapa registrada"
+        if caso_db.status == "Finalizado":
+            tipo_notificacao = "operacao_caso_finalizado"
+            titulo_notificacao = "Caso finalizado na esteira"
+        elif status_anterior != caso_db.status:
+            tipo_notificacao = "operacao_fluxo_movido"
+            titulo_notificacao = "Caso avançou na esteira"
+        _notificar_operacao_todos(
+            db,
+            tipo=tipo_notificacao,
+            titulo=titulo_notificacao,
+            mensagem=(
+                f"{_nome_usuario(current_user)} aprovou {codigo} na etapa {etapa}. "
+                f"Status: {status_anterior} -> {caso_db.status}."
+            ),
+            case_id=caso_id,
+        )
 
     db.commit()
 
-    # Compilar PDF quando aprovado por ambos para impressão em 3 vias
+    # Compilar PDF após etapas-chave do fluxo (diretoria, estoque e finalização).
     caso_final = _load_caso(caso_id, db)
-    if caso_final.status == STATUS_AGUARDANDO_IMPRESSAO:
+    if caso_final.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
         try:
             _compilar_pdf(caso_final, db)
         except RuntimeError as exc:
@@ -1464,6 +1893,16 @@ def confirmar_impressao_oficina(
             "status_rebate_para": caso_db.status_rebate,
             "pdf_compilado_path": pdf_path,
         },
+    )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_caso_finalizado",
+        titulo="Caso finalizado pela oficina",
+        mensagem=(
+            f"{_nome_usuario(current_user)} finalizou {_codigo_caso(caso)} "
+            "após confirmação de impressão em 3 vias."
+        ),
+        case_id=caso_id,
     )
     db.commit()
 
@@ -1530,6 +1969,16 @@ async def upload_video_descarte(
             "status_para": caso_db.status,
         },
     )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_caso_finalizado",
+        titulo="Caso finalizado com vídeo de descarte",
+        mensagem=(
+            f"{_nome_usuario(current_user)} anexou vídeo de descarte e finalizou "
+            f"{_codigo_caso(caso)}."
+        ),
+        case_id=caso_id,
+    )
     db.commit()
 
     # Compilar PDF
@@ -1553,10 +2002,10 @@ def compilar_pdf_manual(
 ):
     """Recompila o PDF do dossiê manualmente."""
     caso = _load_caso(caso_id, db)
-    if caso.status in {STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
+    if caso.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
         _validar_documentos_assinados_por_etapas(
             caso,
-            ["Pos-venda", "Diretoria"],
+            _etapas_requeridas_para_dossie(caso),
             "compilação do dossiê final",
         )
     try:
@@ -1574,6 +2023,15 @@ def compilar_pdf_manual(
         entidade_id=caso.id,
         detalhes={"pdf_compilado_path": result_path},
     )
+    _notificar_operacao_todos(
+        db,
+        tipo="operacao_pdf_recompilado",
+        titulo="Dossiê recompilado",
+        mensagem=(
+            f"{_nome_usuario(current_user)} recompilou o dossiê de {_codigo_caso(caso)}."
+        ),
+        case_id=caso.id,
+    )
     db.commit()
     return {"message": "PDF compilado com sucesso", "path": result_path}
 
@@ -1586,10 +2044,10 @@ def download_pdf_compilado(
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
     caso = _load_caso(caso_id, db)
-    if caso.status in {STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
+    if caso.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
         _validar_documentos_assinados_por_etapas(
             caso,
-            ["Pos-venda", "Diretoria"],
+            _etapas_requeridas_para_dossie(caso),
             "download do dossiê final",
         )
         try:

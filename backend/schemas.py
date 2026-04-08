@@ -25,7 +25,7 @@ class UsuarioCreate(BaseModel):
     nome: str
     email: str
     senha: str
-    papel: str  # operador(time oficina) | gerente_pos_venda | diretor_comercial | admin
+    papel: str  # operador(time oficina) | gerente_pos_venda | diretor_comercial | gestor_estoque | admin
 
 class UsuarioUpdate(BaseModel):
     nome: Optional[str] = None
@@ -39,6 +39,7 @@ class UsuarioOut(BaseModel):
     email: str
     papel: str
     ativo: int
+    assinatura_padrao_atualizada_em: Optional[datetime] = None
     criado_em: Optional[datetime] = None
 
     class Config:
@@ -87,7 +88,9 @@ class DocumentoOut(BaseModel):
 
 
 class DocumentoAssinaturaCreate(BaseModel):
-    assinatura_data_url: str
+    assinatura_data_url: Optional[str] = None
+    usar_assinatura_salva: bool = False
+    salvar_assinatura_usuario: bool = False
 
 
 class DocumentoAssinaturaOut(BaseModel):
@@ -222,6 +225,16 @@ class NotificacaoResumoOut(BaseModel):
 class NotificacaoMarcarTodasOut(BaseModel):
     message: str
     total: int
+
+
+class MinhaAssinaturaOut(BaseModel):
+    tem_assinatura: bool
+    assinatura_data_url: Optional[str] = None
+    atualizado_em: Optional[datetime] = None
+
+
+class MinhaAssinaturaSaveIn(BaseModel):
+    assinatura_data_url: str
 
 
 # ─── Auditoria ───────────────────────────────────────────────────────────────

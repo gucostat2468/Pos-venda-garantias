@@ -11,8 +11,10 @@ class Usuario(Base):
     nome = Column(String(150), nullable=False)
     email = Column(String(150), unique=True, index=True, nullable=False)
     senha_hash = Column(String(255), nullable=False)
-    papel = Column(String(50), nullable=False)  # operador(time oficina) | gerente_pos_venda | diretor_comercial | admin
+    papel = Column(String(50), nullable=False)  # operador(time oficina) | gerente_pos_venda | diretor_comercial | gestor_estoque | admin
     ativo = Column(Integer, default=1)
+    assinatura_padrao_path = Column(String(500), nullable=True)
+    assinatura_padrao_atualizada_em = Column(DateTime, nullable=True)
     criado_em = Column(DateTime, default=func.now())
 
     assinaturas = relationship("Assinatura", back_populates="usuario")
@@ -88,7 +90,7 @@ class DocumentoAssinatura(Base):
     case_id = Column(Integer, ForeignKey("casos_garantia.id"), nullable=False, index=True)
     documento_id = Column(Integer, ForeignKey("documentos.id"), nullable=False, index=True)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
-    etapa_fluxo = Column(String(50), nullable=False)  # Pos-venda | Diretoria
+    etapa_fluxo = Column(String(50), nullable=False)  # Pos-venda | Diretoria | Estoque
     path_assinatura = Column(String(500), nullable=False)
     data_assinatura = Column(DateTime, default=func.now())
 
@@ -103,7 +105,7 @@ class Assinatura(Base):
     id = Column(Integer, primary_key=True, index=True)
     case_id = Column(Integer, ForeignKey("casos_garantia.id"), nullable=False)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    etapa_fluxo = Column(String(50), nullable=False)  # Pos-venda | Diretoria (diretor comercial)
+    etapa_fluxo = Column(String(50), nullable=False)  # Pos-venda | Diretoria (diretor comercial) | Estoque
     status_decisao = Column(String(20), nullable=False)  # Aprovado | Reprovado
     observacao = Column(Text)
     data_assinatura = Column(DateTime, default=func.now())

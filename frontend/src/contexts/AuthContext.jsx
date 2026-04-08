@@ -39,6 +39,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.papel === 'admin'
   const isGerente = user?.papel === 'gerente_pos_venda' || isAdmin
   const isDiretor = user?.papel === 'diretor_comercial' || isAdmin
+  const isGestorEstoque = user?.papel === 'gestor_estoque' || isAdmin
   const isOperador = user?.papel === 'operador' || isAdmin
 
   const podeAssinar = (caso) => {
@@ -47,6 +48,7 @@ export function AuthProvider({ children }) {
       return [
         'Aguardando Aprovação Pós-Venda',
         'Aguardando Aprovação Diretoria',
+        'Aguardando Conferência Estoque',
       ].includes(caso.status)
     }
     if (user.papel === 'gerente_pos_venda') {
@@ -55,11 +57,14 @@ export function AuthProvider({ children }) {
     if (user.papel === 'diretor_comercial') {
       return caso.status === 'Aguardando Aprovação Diretoria'
     }
+    if (user.papel === 'gestor_estoque') {
+      return caso.status === 'Aguardando Conferência Estoque'
+    }
     return false
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isGerente, isDiretor, isOperador, podeAssinar }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isGerente, isDiretor, isGestorEstoque, isOperador, podeAssinar }}>
       {children}
     </AuthContext.Provider>
   )

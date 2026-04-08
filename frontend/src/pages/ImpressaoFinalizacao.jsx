@@ -144,7 +144,7 @@ export default function ImpressaoFinalizacao() {
         <div>
           <h1 style={s.title}>Imprimir e Finalizar</h1>
           <p style={s.subtitle}>
-            Última etapa do fluxo: casos aprovados pela diretoria aguardando impressão em 3 vias e histórico final
+            Sessão legada da oficina para casos antigos que ainda estão na etapa de impressão em 3 vias
           </p>
         </div>
       </div>
@@ -183,7 +183,7 @@ export default function ImpressaoFinalizacao() {
               <span style={s.sectionCount}>{pendentesFiltrados.length}</span>
             </div>
             <p style={s.sectionHint}>
-              Casos nesta lista já foram aprovados pela diretoria. Após imprimir as 3 vias, confirme a finalização.
+              Casos desta lista pertencem ao fluxo anterior. Após imprimir as 3 vias, confirme a finalização.
             </p>
 
             {pendentesFiltrados.length === 0 ? (

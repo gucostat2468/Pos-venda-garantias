@@ -21,6 +21,11 @@ def run_sqlite_migrations(engine) -> None:
         return
 
     with engine.begin() as conn:
+        if _table_exists(conn, "usuarios") and not _column_exists(conn, "usuarios", "assinatura_padrao_path"):
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN assinatura_padrao_path VARCHAR(500)"))
+        if _table_exists(conn, "usuarios") and not _column_exists(conn, "usuarios", "assinatura_padrao_atualizada_em"):
+            conn.execute(text("ALTER TABLE usuarios ADD COLUMN assinatura_padrao_atualizada_em DATETIME"))
+
         if _table_exists(conn, "credito_extratos") and not _column_exists(conn, "credito_extratos", "cliente_id"):
             conn.execute(text("ALTER TABLE credito_extratos ADD COLUMN cliente_id INTEGER"))
 
@@ -72,3 +77,19 @@ def run_sqlite_migrations(engine) -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_entidade_id ON auditoria_eventos(entidade_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_status ON auditoria_eventos(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auditoria_eventos_criado_em ON auditoria_eventos(criado_em)"))
+
+        # Auditoria imutável (append-only): impede UPDATE/DELETE acidental.
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_eventos_block_update
+            BEFORE UPDATE ON auditoria_eventos
+            BEGIN
+                SELECT RAISE(ABORT, 'auditoria_eventos é append-only e não pode ser alterada');
+            END;
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS trg_auditoria_eventos_block_delete
+            BEFORE DELETE ON auditoria_eventos
+            BEGIN
+                SELECT RAISE(ABORT, 'auditoria_eventos é append-only e não pode ser excluída');
+            END;
+        """))

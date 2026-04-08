@@ -4,6 +4,7 @@ const STATUS_CONFIG = {
   'Aguardando Documentos':         { color: '#92400e', bg: '#fef3c7', icon: '📄' },
   'Aguardando Aprovação Pós-Venda':{ color: '#1e40af', bg: '#dbeafe', icon: '✍️' },
   'Aguardando Aprovação Diretoria':{ color: '#5b21b6', bg: '#ede9fe', icon: '✍️' },
+  'Aguardando Conferência Estoque':{ color: '#92400e', bg: '#ffedd5', icon: '📦' },
   'Aguardando Impressão Oficina':  { color: '#065f46', bg: '#d1fae5', icon: '🖨️' },
   'Aguardando Vídeo Descarte':     { color: '#065f46', bg: '#d1fae5', icon: '🎥' },
   'Finalizado':                    { color: '#065f46', bg: '#d1fae5', icon: '✅' },

@@ -136,7 +136,13 @@ def generate_cover_page(caso_data: dict) -> bytes:
     if assinaturas:
         sig_data = [["Etapa", "Responsável", "Decisão", "Data/Hora"]]
         for sig in assinaturas:
-            etapa_label = "Pós-venda" if sig.get("etapa_fluxo") == "Pos-venda" else "Diretoria Comercial"
+            etapa = sig.get("etapa_fluxo")
+            etapa_label = (
+                "Pós-venda" if etapa == "Pos-venda"
+                else "Diretoria Comercial" if etapa == "Diretoria"
+                else "Gestor de Estoque" if etapa == "Estoque"
+                else (etapa or "—")
+            )
             decisao = sig.get("status_decisao", "—")
             data_hora = sig.get("data_assinatura_formatada") or sig.get("data_assinatura", "—")
             if hasattr(data_hora, 'strftime'):

@@ -813,6 +813,42 @@ textarea:focus-visible {
   color: #7a8698;
 }
 
+.dash-kpi-breakdown {
+  margin-top: 8px;
+  display: grid;
+  gap: 5px;
+}
+
+.dash-kpi-break-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #dee7f4;
+  border-radius: 8px;
+  background: #f7faff;
+  color: #53647b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  text-decoration: none;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.dash-kpi-break-item strong {
+  color: #1f3a64;
+  font-size: 12px;
+}
+
+.dash-kpi-break-item:hover {
+  border-color: #c7d8f0;
+  background: #edf4ff;
+  color: #264f95;
+}
+
 .dash-flow-row {
   display: flex;
   align-items: stretch;
