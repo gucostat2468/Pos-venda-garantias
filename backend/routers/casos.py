@@ -1158,6 +1158,27 @@ async def upload_documento(
     caso = _load_caso(caso_id, db)
     categoria_upload = _categorizar_tipo_documento(tipo_documento)
     upload_foto_estoque = categoria_upload == "categoria_foto_pedido_estoque"
+
+    # A foto dos pedidos é exclusiva da etapa do Gestor de Estoque
+    # (após assinatura da diretoria) e não faz parte dos anexos da oficina.
+    if upload_foto_estoque:
+        if current_user.papel not in {"gestor_estoque", "admin"}:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A foto dos pedidos é exclusiva da sessão do Gestor de Estoque "
+                    "após a assinatura da Diretoria Comercial."
+                ),
+            )
+        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A foto dos pedidos só pode ser anexada na etapa de conferência "
+                    "do Gestor de Estoque."
+                ),
+            )
+
     permitido_estoque = (
         caso.status in STATUS_ETAPA_ESTOQUE_COMPAT
         and current_user.papel in {"gestor_estoque", "admin"}
@@ -1613,6 +1634,17 @@ def deletar_documento(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
+    if _documento_foto_pedido_estoque(doc):
+        if current_user.papel not in {"gestor_estoque", "admin"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente o Gestor de Estoque pode remover a foto dos pedidos nesta etapa.",
+            )
+        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
+            raise HTTPException(
+                status_code=400,
+                detail="A foto dos pedidos só pode ser gerenciada durante a etapa do Gestor de Estoque.",
+            )
     if caso.status in STATUS_BLOQUEIA_EDICAO:
         permitido_estoque = (
             caso.status in STATUS_ETAPA_ESTOQUE_COMPAT

@@ -849,6 +849,186 @@ textarea:focus-visible {
   color: #264f95;
 }
 
+.dash-pending-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 2px;
+}
+
+.dash-pending-card {
+  position: relative;
+  border: 1px solid #dbe4f2;
+  border-radius: 12px;
+  background: #fff;
+  padding: 11px 12px 10px;
+  display: grid;
+  gap: 8px;
+  min-height: 142px;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.dash-pending-card:hover {
+  border-color: #cdd9ec;
+  box-shadow: 0 8px 16px rgba(29, 52, 87, 0.08);
+  transform: translateY(-1px);
+}
+
+.dash-pending-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 4px;
+  border-radius: 8px;
+  background: #c9d7eb;
+}
+
+.dash-pending-card.tone-warning::before {
+  background: #f59e0b;
+}
+
+.dash-pending-card.tone-blue::before {
+  background: #2d6cdf;
+}
+
+.dash-pending-card.tone-success::before {
+  background: #1eb96b;
+}
+
+.dash-pending-card.tone-danger::before {
+  background: #f15050;
+}
+
+.dash-pending-card.is-empty {
+  background: #fbfcfe;
+}
+
+.dash-pending-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.dash-pending-title-wrap {
+  min-width: 0;
+}
+
+.dash-pending-title {
+  color: #1f3a64;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dash-pending-subtitle {
+  color: #7c8a9e;
+  font-size: 11px;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-pending-count {
+  min-width: 38px;
+  height: 32px;
+  border-radius: 999px;
+  background: #edf4ff;
+  color: #1f67c4;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  padding: 0 8px;
+}
+
+.dash-pending-card.is-active .dash-pending-count {
+  background: #fff5dc;
+  color: #b45309;
+}
+
+.dash-pending-case-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.dash-pending-case-chip {
+  max-width: 100%;
+  border: 1px solid #cfe0fb;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f67c4;
+  text-decoration: none;
+  background: #edf4ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.dash-pending-case-chip:hover {
+  border-color: #b9cff0;
+  background: #e6f0ff;
+  color: #1a59b6;
+}
+
+.dash-pending-more {
+  font-size: 11px;
+  color: #6b7b90;
+  font-weight: 600;
+}
+
+.dash-pending-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.dash-pending-actions {
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.dash-pending-open {
+  display: inline-block;
+  border: 1px solid #b9cdf0;
+  border-radius: 8px;
+  background: #edf4ff;
+  color: #265cbf;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+  text-decoration: none;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.dash-pending-open:hover {
+  background: #e2edff;
+  border-color: #a9c2ea;
+  color: #1f56b7;
+}
+
+.dash-pending-open.is-ghost {
+  background: #f6f9ff;
+  border-color: #d7e2f3;
+  color: #6b7b90;
+}
+
 .dash-flow-row {
   display: flex;
   align-items: stretch;
@@ -2090,6 +2270,10 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dash-pending-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dash-details-grid {
     grid-template-columns: 1fr;
   }
@@ -2207,6 +2391,10 @@ textarea:focus-visible {
   }
 
   .dash-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-pending-grid {
     grid-template-columns: 1fr;
   }
 

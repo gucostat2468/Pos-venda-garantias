@@ -852,6 +852,12 @@ export default function CasoDetail() {
             <strong>{STATUS_AGUARDANDO_ESTOQUE}</strong>.
           </div>
         )}
+        {!usuarioEhGestorEstoque && (
+          <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
+            A foto dos pedidos não pertence ao anexo da oficina. Esse anexo é exclusivo da etapa final do Gestor de Estoque,
+            liberada somente após a assinatura do Diretor Comercial.
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {docsObrigatorios.map((docConfig) => {
@@ -912,6 +918,10 @@ export default function CasoDetail() {
               </div>
             )
           })}
+
+          <div style={s.estoqueSectionTitle}>
+            Etapa Gestor de Estoque (após assinatura da Diretoria)
+          </div>
 
           <div
             ref={fotoEstoqueRowRef}
@@ -1391,6 +1401,16 @@ const s = {
   docRow: {
     display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
     borderRadius: 8, border: '1.5px solid var(--border)', background: '#fafafa',
+  },
+  estoqueSectionTitle: {
+    marginTop: 2,
+    marginBottom: 2,
+    padding: '6px 2px',
+    fontSize: 12,
+    fontWeight: 800,
+    color: '#9a3412',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
   },
   docRowDone: { borderColor: '#bbf7d0', background: '#f0fdf4' },
   docIcon: { fontSize: 20, flexShrink: 0 },

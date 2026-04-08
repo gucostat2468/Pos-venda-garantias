@@ -355,6 +355,7 @@ export default function Dashboard() {
 
   const totalPendenciasDashboard = pendingSummary.reduce((acc, item) => acc + item.count, 0)
   const pendingWithCases = pendingSummary.filter((item) => item.count > 0)
+  const pendingBreakdown = pendingWithCases.length > 0 ? pendingWithCases : pendingSummary
   const casoAtual = casoDestaque || casos[0] || null
   const codigoCasoAtual = formatCaseCode(casoAtual)
   const canDeleteCase = isAdmin || isOperador
@@ -473,7 +474,7 @@ export default function Dashboard() {
       label: 'Pendências no Dashboard',
       value: totalPendenciasDashboard,
       detail: 'Todas as etapas pendentes centralizadas por status',
-      breakdown: pendingSummary.map((item) => ({
+      breakdown: pendingBreakdown.map((item) => ({
         label: item.label,
         value: item.count,
         to: item.to,
@@ -534,57 +535,47 @@ export default function Dashboard() {
             {pendingWithCases.length === 0 ? (
               <div className="dash-empty-cell">Nenhuma pendência ativa no momento.</div>
             ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div className="dash-pending-grid">
                 {pendingSummary.map((item) => (
                   <article
                     key={item.status}
-                    style={{
-                      border: '1px solid #dbe4f2',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      background: item.count > 0 ? '#f8fbff' : '#fff',
-                    }}
+                    className={`dash-pending-card tone-${STATUS_VIEW[item.status]?.tone || 'neutral'} ${item.count > 0 ? 'is-active' : 'is-empty'}`}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                      <strong style={{ color: '#1f3a64', fontSize: 13 }}>{item.label}</strong>
-                      <span style={{ fontWeight: 800, color: item.count > 0 ? '#b45309' : '#64748b', fontSize: 18 }}>
+                    <div className="dash-pending-head">
+                      <div className="dash-pending-title-wrap">
+                        <h3 className="dash-pending-title">{item.label}</h3>
+                        <div className="dash-pending-subtitle">{item.status}</div>
+                      </div>
+                      <span className="dash-pending-count">
                         {item.count}
                       </span>
                     </div>
 
                     {item.count > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                        {item.casos.slice(0, 4).map((caso) => (
+                      <div className="dash-pending-case-list">
+                        {item.casos.slice(0, 3).map((caso) => (
                           <Link
                             key={caso.id}
                             to={`/casos/${caso.id}`}
-                            style={{
-                              border: '1px solid #cfe0fb',
-                              borderRadius: 999,
-                              padding: '4px 8px',
-                              fontSize: 11,
-                              color: '#1f67c4',
-                              textDecoration: 'none',
-                              background: '#edf4ff',
-                            }}
+                            className="dash-pending-case-chip"
                           >
                             {formatCaseCode(caso)}
                           </Link>
                         ))}
-                        {item.count > 4 && (
-                          <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center' }}>
-                            +{item.count - 4} caso(s)
+                        {item.count > 3 && (
+                          <span className="dash-pending-more">
+                            +{item.count - 3} caso(s)
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
+                      <div className="dash-pending-empty">
                         Sem pendências neste status.
                       </div>
                     )}
 
-                    <div style={{ marginTop: 8 }}>
-                      <Link className="dash-view-btn" to={item.to}>
+                    <div className="dash-pending-actions">
+                      <Link className={`dash-pending-open ${item.count === 0 ? 'is-ghost' : ''}`} to={item.to}>
                         Abrir fila
                       </Link>
                     </div>
