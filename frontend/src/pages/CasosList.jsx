@@ -98,6 +98,22 @@ const FILA_ASSINATURA_CONFIG = {
 }
 const STATUS_LEGADO_IMPRESSAO = 'Aguardando Impressão Oficina'
 const STATUS_ETAPA_ESTOQUE_COMPAT = new Set(['Aguardando Conferência Estoque', STATUS_LEGADO_IMPRESSAO])
+const PAPEL_LABEL = {
+  operador: 'Time Oficina',
+  gerente_pos_venda: 'Gerente Pós-venda',
+  diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
+  admin: 'Administrador',
+}
+
+const formatarSolicitante = (caso) => {
+  const nome = String(caso?.criado_por?.nome || '').trim()
+  const papel = PAPEL_LABEL[caso?.criado_por?.papel] || ''
+  if (nome && papel) return `${nome} (${papel})`
+  if (nome) return nome
+  if (caso?.criado_por_usuario_id) return `Usuário #${caso.criado_por_usuario_id}`
+  return 'Não identificado'
+}
 
 const criarResumoCasoLista = (caso) => [
   caso?.id ?? '',
@@ -114,6 +130,10 @@ const criarResumoCasoLista = (caso) => [
   caso?.assinatura_etapa ?? '',
   caso?.cliente?.id ?? '',
   caso?.cliente?.razao_social ?? '',
+  caso?.criado_por_usuario_id ?? '',
+  caso?.criado_por?.id ?? '',
+  caso?.criado_por?.nome ?? '',
+  caso?.criado_por?.papel ?? '',
 ].join('|')
 
 const mesmaListaCasos = (atual, proxima) => {
@@ -434,6 +454,7 @@ export default function CasosList() {
                     </div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Produto:</span><span>{caso.produto_nome || '—'}</span></div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Cliente:</span><span>{caso.cliente?.razao_social || '—'}</span></div>
+                    <div style={s.mobileLine}><span style={s.mobileLabel}>Solicitado por:</span><span>{formatarSolicitante(caso)}</span></div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Entrada:</span><span>{new Date(`${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span></div>
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
@@ -464,6 +485,7 @@ export default function CasosList() {
                     <tr style={s.thead}>
                       <th style={s.th}>Caso</th>
                       <th style={s.th}>Cliente</th>
+                      <th style={s.th}>Solicitado por</th>
                       <th style={s.th}>Produto</th>
                       <th style={s.th}>Tipo</th>
                       <th style={s.th}>Status</th>
@@ -480,6 +502,7 @@ export default function CasosList() {
                           </Link>
                         </td>
                         <td style={s.td}>{caso.cliente?.razao_social || '—'}</td>
+                        <td style={s.td}>{formatarSolicitante(caso)}</td>
                         <td style={s.td}>{caso.produto_nome || '—'}</td>
                         <td style={s.td}><TipoBadge tipo={caso.tipo_processo} /></td>
                         <td style={s.td}><StatusBadge status={caso.status} /></td>
@@ -540,6 +563,7 @@ export default function CasosList() {
                     </div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Produto:</span><span>{caso.produto_nome || '—'}</span></div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Cliente:</span><span>{caso.cliente?.razao_social || '—'}</span></div>
+                    <div style={s.mobileLine}><span style={s.mobileLabel}>Solicitado por:</span><span>{formatarSolicitante(caso)}</span></div>
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Atualizado:</span><span>{new Date(caso.atualizado_em || caso.criado_em || `${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span></div>
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
@@ -564,6 +588,7 @@ export default function CasosList() {
                     <tr style={s.thead}>
                       <th style={s.th}>Caso</th>
                       <th style={s.th}>Cliente</th>
+                      <th style={s.th}>Solicitado por</th>
                       <th style={s.th}>Produto</th>
                       <th style={s.th}>Tipo</th>
                       <th style={s.th}>Status</th>
@@ -581,6 +606,7 @@ export default function CasosList() {
                           </Link>
                         </td>
                         <td style={s.td}>{caso.cliente?.razao_social || '—'}</td>
+                        <td style={s.td}>{formatarSolicitante(caso)}</td>
                         <td style={s.td}>{caso.produto_nome || '—'}</td>
                         <td style={s.td}><TipoBadge tipo={caso.tipo_processo} /></td>
                         <td style={s.td}><StatusBadge status={caso.status} /></td>
@@ -650,6 +676,10 @@ export default function CasosList() {
                       <span>{caso.cliente?.razao_social || '—'}</span>
                     </div>
                     <div style={s.mobileLine}>
+                      <span style={s.mobileLabel}>Solicitado por:</span>
+                      <span>{formatarSolicitante(caso)}</span>
+                    </div>
+                    <div style={s.mobileLine}>
                       <span style={s.mobileLabel}>Data:</span>
                       <span>{new Date(`${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span>
                     </div>
@@ -682,6 +712,7 @@ export default function CasosList() {
                       <th style={s.th}>Produto</th>
                       <th style={s.th}>SN</th>
                       <th style={s.th}>Cliente</th>
+                      <th style={s.th}>Solicitado por</th>
                       <th style={s.th}>Status</th>
                       <th style={s.th}>Rebate</th>
                       <th style={s.th}>Data</th>
@@ -708,6 +739,7 @@ export default function CasosList() {
                           <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{caso.produto_sn || '—'}</span>
                         </td>
                         <td style={s.td}>{caso.cliente?.razao_social || '—'}</td>
+                        <td style={s.td}>{formatarSolicitante(caso)}</td>
                         <td style={s.td}><StatusBadge status={caso.status} /></td>
                         <td style={s.td}><RebateBadge status={caso.status_rebate} /></td>
                         <td style={s.td}>{new Date(`${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</td>

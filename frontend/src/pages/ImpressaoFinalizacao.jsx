@@ -22,6 +22,23 @@ function normalize(value) {
     .trim()
 }
 
+const PAPEL_LABEL = {
+  operador: 'Time Oficina',
+  gerente_pos_venda: 'Gerente Pós-venda',
+  diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
+  admin: 'Administrador',
+}
+
+function formatSolicitante(caso) {
+  const nome = String(caso?.criado_por?.nome || '').trim()
+  const papel = PAPEL_LABEL[caso?.criado_por?.papel] || ''
+  if (nome && papel) return `${nome} (${papel})`
+  if (nome) return nome
+  if (caso?.criado_por_usuario_id) return `Usuário #${caso.criado_por_usuario_id}`
+  return 'Não identificado'
+}
+
 export default function ImpressaoFinalizacao() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { isAdmin, isOperador } = useAuth()
@@ -128,6 +145,9 @@ export default function ImpressaoFinalizacao() {
       caso.dji_case_id,
       caso.id,
       caso.cliente?.razao_social,
+      caso.criado_por?.nome,
+      caso.criado_por?.papel,
+      caso.criado_por_usuario_id,
       caso.produto_nome,
       caso.produto_modelo,
       caso.produto_sn,
@@ -199,6 +219,7 @@ export default function ImpressaoFinalizacao() {
                       <StatusBadge status={caso.status} />
                     </div>
                     <div style={s.mobileLine}><strong>Cliente:</strong> {caso.cliente?.razao_social || '—'}</div>
+                    <div style={s.mobileLine}><strong>Solicitado por:</strong> {formatSolicitante(caso)}</div>
                     <div style={s.mobileLine}><strong>Produto:</strong> {caso.produto_nome || '—'}</div>
                     <div style={s.mobileLine}><strong>Entrada:</strong> {formatDate(caso.data_entrada)}</div>
                     <div style={s.mobileActions}>
@@ -236,6 +257,7 @@ export default function ImpressaoFinalizacao() {
                     <tr style={s.thead}>
                       <th style={s.th}>Caso</th>
                       <th style={s.th}>Cliente</th>
+                      <th style={s.th}>Solicitado por</th>
                       <th style={s.th}>Produto</th>
                       <th style={s.th}>Tipo</th>
                       <th style={s.th}>Status</th>
@@ -252,6 +274,7 @@ export default function ImpressaoFinalizacao() {
                           </Link>
                         </td>
                         <td style={s.td}>{caso.cliente?.razao_social || '—'}</td>
+                        <td style={s.td}>{formatSolicitante(caso)}</td>
                         <td style={s.td}>{caso.produto_nome || '—'}</td>
                         <td style={s.td}><TipoBadge tipo={caso.tipo_processo} /></td>
                         <td style={s.td}><StatusBadge status={caso.status} /></td>
@@ -311,6 +334,7 @@ export default function ImpressaoFinalizacao() {
                       <StatusBadge status={caso.status} />
                     </div>
                     <div style={s.mobileLine}><strong>Cliente:</strong> {caso.cliente?.razao_social || '—'}</div>
+                    <div style={s.mobileLine}><strong>Solicitado por:</strong> {formatSolicitante(caso)}</div>
                     <div style={s.mobileLine}><strong>Produto:</strong> {caso.produto_nome || '—'}</div>
                     <div style={s.mobileLine}><strong>Finalizado em:</strong> {formatDate(caso.atualizado_em || caso.criado_em)}</div>
                     <div style={s.mobileLine}><strong>Rebate:</strong> <RebateBadge status={caso.status_rebate} /></div>
@@ -339,6 +363,7 @@ export default function ImpressaoFinalizacao() {
                     <tr style={s.thead}>
                       <th style={s.th}>Caso</th>
                       <th style={s.th}>Cliente</th>
+                      <th style={s.th}>Solicitado por</th>
                       <th style={s.th}>Produto</th>
                       <th style={s.th}>Tipo</th>
                       <th style={s.th}>Rebate</th>
@@ -355,6 +380,7 @@ export default function ImpressaoFinalizacao() {
                           </Link>
                         </td>
                         <td style={s.td}>{caso.cliente?.razao_social || '—'}</td>
+                        <td style={s.td}>{formatSolicitante(caso)}</td>
                         <td style={s.td}>{caso.produto_nome || '—'}</td>
                         <td style={s.td}><TipoBadge tipo={caso.tipo_processo} /></td>
                         <td style={s.td}><RebateBadge status={caso.status_rebate} /></td>

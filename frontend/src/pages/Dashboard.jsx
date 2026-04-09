@@ -206,6 +206,13 @@ const STATUS_VIEW = {
   Finalizado: { label: 'Finalizado', tone: 'success' },
   Reprovado: { label: 'Reprovado', tone: 'danger' },
 }
+const PAPEL_LABEL = {
+  operador: 'Time Oficina',
+  gerente_pos_venda: 'Gerente Pós-venda',
+  diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
+  admin: 'Administrador',
+}
 
 function formatCaseCode(caso) {
   if (!caso) {
@@ -237,6 +244,21 @@ function formatDateTime(dateString) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatSolicitante(caso) {
+  const nome = String(caso?.criado_por?.nome || '').trim()
+  const papel = PAPEL_LABEL[caso?.criado_por?.papel] || ''
+  if (nome && papel) {
+    return `${nome} (${papel})`
+  }
+  if (nome) {
+    return nome
+  }
+  if (caso?.criado_por_usuario_id) {
+    return `Usuário #${caso.criado_por_usuario_id}`
+  }
+  return 'Não identificado'
 }
 
 function extensionTag(filename) {
@@ -603,6 +625,9 @@ export default function Dashboard() {
               <h2>Detalhes do Caso</h2>
               <span className="dp-chip-case">{codigoCasoAtual}</span>
             </div>
+            <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+              Solicitado por: <strong style={{ color: 'var(--text)' }}>{formatSolicitante(casoAtual)}</strong>
+            </div>
 
             <div className="dash-details-grid">
               <article className="dash-module-card">
@@ -767,6 +792,7 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <div className="dash-mobile-line"><span>Cliente</span>{caso.cliente?.razao_social || '-'}</div>
+                          <div className="dash-mobile-line"><span>Solicitado por</span>{formatSolicitante(caso)}</div>
                           <div className="dash-mobile-line"><span>Produto</span>{caso.produto_modelo || caso.produto_nome || '-'}</div>
                           <div className="dash-mobile-line"><span>Data</span>{formatDate(caso.data_entrada)}</div>
                           <div className="dash-mobile-foot">
@@ -801,6 +827,7 @@ export default function Dashboard() {
                     <tr>
                       <th>ID do Caso DJI</th>
                       <th>Cliente</th>
+                      <th>Solicitado por</th>
                       <th>Tipo</th>
                       <th>Produto</th>
                       <th>Data Entrada</th>
@@ -811,7 +838,7 @@ export default function Dashboard() {
                   <tbody>
                     {tableRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="dash-empty-cell">
+                        <td colSpan={8} className="dash-empty-cell">
                           Nenhum caso encontrado para este filtro.
                         </td>
                       </tr>
@@ -822,6 +849,7 @@ export default function Dashboard() {
                           <tr key={caso.id}>
                             <td>{formatCaseCode(caso)}</td>
                             <td>{caso.cliente?.razao_social || '-'}</td>
+                            <td>{formatSolicitante(caso)}</td>
                             <td>
                               <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
                                 {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}

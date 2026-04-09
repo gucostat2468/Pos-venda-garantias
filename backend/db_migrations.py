@@ -29,6 +29,35 @@ def run_sqlite_migrations(engine) -> None:
         if _table_exists(conn, "credito_extratos") and not _column_exists(conn, "credito_extratos", "cliente_id"):
             conn.execute(text("ALTER TABLE credito_extratos ADD COLUMN cliente_id INTEGER"))
 
+        if _table_exists(conn, "casos_garantia") and not _column_exists(conn, "casos_garantia", "criado_por_usuario_id"):
+            conn.execute(text("ALTER TABLE casos_garantia ADD COLUMN criado_por_usuario_id INTEGER"))
+        if _table_exists(conn, "casos_garantia"):
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_casos_garantia_criado_por_usuario_id ON casos_garantia(criado_por_usuario_id)"))
+
+        # Backfill de governança:
+        # quando possível, preenche o usuário criador do caso com base na auditoria de "caso_criado".
+        if _table_exists(conn, "casos_garantia") and _table_exists(conn, "auditoria_eventos") and _column_exists(conn, "casos_garantia", "criado_por_usuario_id"):
+            conn.execute(text("""
+                UPDATE casos_garantia
+                   SET criado_por_usuario_id = (
+                       SELECT ae.usuario_id
+                         FROM auditoria_eventos ae
+                        WHERE ae.case_id = casos_garantia.id
+                          AND ae.acao = 'caso_criado'
+                          AND ae.usuario_id IS NOT NULL
+                        ORDER BY ae.id ASC
+                        LIMIT 1
+                   )
+                 WHERE criado_por_usuario_id IS NULL
+                   AND EXISTS (
+                       SELECT 1
+                         FROM auditoria_eventos ae2
+                        WHERE ae2.case_id = casos_garantia.id
+                          AND ae2.acao = 'caso_criado'
+                          AND ae2.usuario_id IS NOT NULL
+                   )
+            """))
+
         # Migração de fluxo legado:
         # casos que estavam em "Aguardando Impressão Oficina" (sem assinatura de estoque)
         # passam para "Aguardando Conferência Estoque" para conclusão obrigatória pelo gestor.

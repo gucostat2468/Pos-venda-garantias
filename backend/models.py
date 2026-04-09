@@ -19,6 +19,11 @@ class Usuario(Base):
 
     assinaturas = relationship("Assinatura", back_populates="usuario")
     documento_assinaturas = relationship("DocumentoAssinatura", back_populates="usuario")
+    casos_criados = relationship(
+        "CasoGarantia",
+        back_populates="criado_por",
+        foreign_keys="CasoGarantia.criado_por_usuario_id",
+    )
     notificacoes = relationship("Notificacao", back_populates="usuario", cascade="all, delete-orphan")
     auditoria_eventos = relationship("AuditoriaEvento", back_populates="usuario")
 
@@ -43,6 +48,7 @@ class CasoGarantia(Base):
     dji_case_id = Column(String(50), index=True)
     tipo_processo = Column(String(20), nullable=False)  # Peca | Bateria
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    criado_por_usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
     produto_nome = Column(String(200))
     produto_modelo = Column(String(100))
     produto_sn = Column(String(100))
@@ -58,6 +64,7 @@ class CasoGarantia(Base):
     atualizado_em = Column(DateTime, default=func.now(), onupdate=func.now())
 
     cliente = relationship("Cliente", back_populates="casos")
+    criado_por = relationship("Usuario", back_populates="casos_criados", foreign_keys=[criado_por_usuario_id])
     documentos = relationship("Documento", back_populates="caso", cascade="all, delete-orphan")
     assinaturas = relationship("Assinatura", back_populates="caso", cascade="all, delete-orphan")
     documento_assinaturas = relationship("DocumentoAssinatura", back_populates="caso", cascade="all, delete-orphan")

@@ -83,6 +83,13 @@ const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
 const STATUS_AGUARDANDO_IMPRESSAO = 'Aguardando Impressão Oficina'
 const STATUS_ETAPA_ESTOQUE_COMPAT = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO]
 const TIPO_DOCUMENTO_FOTO_ESTOQUE = 'Foto dos Pedidos - Estoque'
+const PAPEL_LABEL = {
+  operador: 'Time Oficina',
+  gerente_pos_venda: 'Gerente Pós-venda',
+  diretor_comercial: 'Diretor Comercial',
+  gestor_estoque: 'Gestor de Estoque',
+  admin: 'Administrador',
+}
 
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
@@ -127,6 +134,15 @@ const categorizarTipoDocumento = (tipoDocumento) => {
 const isDocumentoAssinavel = (doc) => {
   const categoria = categorizarTipoDocumento(doc?.tipo_documento)
   return categoria === 'categoria_remessa_dronepro' || categoria === 'categoria_remessa_huada'
+}
+
+const formatarSolicitante = (caso) => {
+  const nome = String(caso?.criado_por?.nome || '').trim()
+  const papel = PAPEL_LABEL[caso?.criado_por?.papel] || ''
+  if (nome && papel) return `${nome} (${papel})`
+  if (nome) return nome
+  if (caso?.criado_por_usuario_id) return `Usuário #${caso.criado_por_usuario_id}`
+  return 'Não identificado'
 }
 
 export default function CasoDetail() {
@@ -783,6 +799,7 @@ export default function CasoDetail() {
             <InfoItem label="Nº de Série" value={caso.produto_sn || '—'} mono />
             <InfoItem label="Data de Entrada" value={new Date(caso.data_entrada + 'T00:00:00').toLocaleDateString('pt-BR')} />
             <InfoItem label="Cliente" value={caso.cliente?.razao_social || '—'} />
+            <InfoItem label="Solicitado por" value={formatarSolicitante(caso)} />
             <InfoItem label="CNPJ" value={caso.cliente?.cnpj || '—'} mono />
             <InfoItem label="E-mail" value={caso.cliente?.email || '—'} />
             <InfoItem label="Telefone" value={caso.cliente?.telefone || '—'} />

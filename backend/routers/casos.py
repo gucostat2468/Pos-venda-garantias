@@ -318,6 +318,7 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
         db.query(models.CasoGarantia)
         .options(
             joinedload(models.CasoGarantia.cliente),
+            joinedload(models.CasoGarantia.criado_por),
             joinedload(models.CasoGarantia.documentos),
             joinedload(models.CasoGarantia.documento_assinaturas).joinedload(models.DocumentoAssinatura.usuario),
             joinedload(models.CasoGarantia.assinaturas).joinedload(models.Assinatura.usuario)
@@ -821,7 +822,10 @@ def listar_casos(
     _migrar_status_legado_video_para_estoque(db)
     q = (
         db.query(models.CasoGarantia)
-        .options(joinedload(models.CasoGarantia.cliente))
+        .options(
+            joinedload(models.CasoGarantia.cliente),
+            joinedload(models.CasoGarantia.criado_por),
+        )
         .order_by(models.CasoGarantia.criado_em.desc())
     )
     if status:
@@ -899,7 +903,10 @@ def criar_caso(
     if body.tipo_processo not in ["Peca", "Bateria"]:
         raise HTTPException(status_code=400, detail="Tipo de processo inválido. Use: Peca | Bateria")
 
-    caso = models.CasoGarantia(**body.model_dump())
+    caso = models.CasoGarantia(
+        **body.model_dump(),
+        criado_por_usuario_id=current_user.id,
+    )
     db.add(caso)
     db.flush()
     registrar_evento_auditoria(
@@ -914,6 +921,8 @@ def criar_caso(
         detalhes={
             "tipo_processo": caso.tipo_processo,
             "cliente_id": caso.cliente_id,
+            "criado_por_usuario_id": caso.criado_por_usuario_id,
+            "criado_por_nome": _nome_usuario(current_user),
             "produto_nome": caso.produto_nome,
             "produto_modelo": caso.produto_modelo,
             "produto_sn": caso.produto_sn,

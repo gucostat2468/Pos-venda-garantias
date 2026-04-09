@@ -46,6 +46,15 @@ class UsuarioOut(BaseModel):
         from_attributes = True
 
 
+class UsuarioResumoOut(BaseModel):
+    id: int
+    nome: str
+    papel: str
+
+    class Config:
+        from_attributes = True
+
+
 # ─── Cliente ──────────────────────────────────────────────────────────────────
 
 class ClienteCreate(BaseModel):
@@ -153,6 +162,8 @@ class CasoOut(BaseModel):
     dji_case_id: Optional[str] = None
     tipo_processo: str
     cliente_id: int
+    criado_por_usuario_id: Optional[int] = None
+    criado_por: Optional[UsuarioResumoOut] = None
     produto_nome: Optional[str] = None
     produto_modelo: Optional[str] = None
     produto_sn: Optional[str] = None
@@ -175,6 +186,8 @@ class CasoListOut(BaseModel):
     id: int
     dji_case_id: Optional[str] = None
     tipo_processo: str
+    criado_por_usuario_id: Optional[int] = None
+    criado_por: Optional[UsuarioResumoOut] = None
     produto_nome: Optional[str] = None
     produto_modelo: Optional[str] = None
     produto_sn: Optional[str] = None
