@@ -156,10 +156,10 @@ export default function CreditoArquivos() {
           </div>
           {podeSincronizar && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
-            <button onClick={handleSync} style={s.syncBtn} disabled={syncing || reconciling}>
+            <button onClick={handleSync} style={{ ...s.syncBtn, ...(isMobile ? s.topActionBtnMobile : {}) }} disabled={syncing || reconciling}>
               {syncing ? 'Sincronizando...' : 'Sincronizar Planilhas'}
             </button>
-            <button onClick={handleReconcile} style={s.reconcileBtn} disabled={syncing || reconciling}>
+            <button onClick={handleReconcile} style={{ ...s.reconcileBtn, ...(isMobile ? s.topActionBtnMobile : {}) }} disabled={syncing || reconciling}>
               {reconciling ? 'Reconciliando...' : 'Reconciliar com Casos'}
             </button>
           </div>
@@ -227,7 +227,7 @@ export default function CreditoArquivos() {
                   type="button"
                   onClick={handleDownloadArquivo}
                   disabled={downloadingArquivo}
-                  style={s.downloadBtn}
+                  style={{ ...s.downloadBtn, ...(isMobile ? s.topActionBtnMobile : {}) }}
                 >
                   {downloadingArquivo ? 'Baixando...' : 'Baixar planilha'}
                 </button>
@@ -317,6 +317,7 @@ const s = {
     fontWeight: 700,
     cursor: 'pointer',
   },
+  topActionBtnMobile: { width: '100%', minHeight: 42, textAlign: 'center' },
   successBox: {
     background: '#ecfdf5',
     color: '#065f46',

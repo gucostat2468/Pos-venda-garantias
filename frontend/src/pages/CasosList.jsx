@@ -12,7 +12,6 @@ const STATUS_OPTIONS = [
   'Aguardando Aprovação Diretoria',
   'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
-  'Aguardando Vídeo Descarte',
   'Finalizado',
   'Reprovado',
 ]

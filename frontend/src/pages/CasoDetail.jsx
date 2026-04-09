@@ -163,6 +163,7 @@ export default function CasoDetail() {
   const fotoEstoqueRowRef = useRef(null)
   const isDrawingRef = useRef(false)
   const autoSignHandledRef = useRef(false)
+  const autoFotoScrollHandledKeyRef = useRef('')
 
   const fetchCaso = useCallback(async () => {
     try {
@@ -565,12 +566,17 @@ export default function CasoDetail() {
   }, [autoSignRequested, loading, caso, canSign])
 
   useEffect(() => {
-    if (!autoFotoUploadRequested || loading || !caso) return
+    if (!autoFotoUploadRequested || loading || !caso?.id) return
+    const autoFotoKey = `${id}:${caso.id}:foto_estoque`
+    if (autoFotoScrollHandledKeyRef.current === autoFotoKey) return
     const timer = window.setTimeout(() => {
-      fotoEstoqueRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const target = fotoEstoqueRowRef.current
+      if (!target) return
+      autoFotoScrollHandledKeyRef.current = autoFotoKey
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 120)
     return () => window.clearTimeout(timer)
-  }, [autoFotoUploadRequested, loading, caso])
+  }, [autoFotoUploadRequested, loading, caso?.id, id])
 
   useEffect(() => {
     if (!assinaModal || !documentoAtualAssinatura) {
@@ -692,7 +698,7 @@ export default function CasoDetail() {
   ]
 
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div style={{ width: '100%', maxWidth: 960 }}>
       {/* Header */}
       <div style={s.pageHeader}>
         <div>
@@ -706,20 +712,20 @@ export default function CasoDetail() {
             {caso.produto_nome || '—'} · {caso.cliente?.razao_social || '—'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start', ...(isMobile ? s.headerActionsMobile : {}) }}>
           {!isLockedForOfficeEdition && !editMode && (isOperador || isAdmin) && (
-            <button onClick={() => setEditMode(true)} style={s.outlineBtn}>✏️ Editar</button>
+            <button onClick={() => setEditMode(true)} style={{ ...s.outlineBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>✏️ Editar</button>
           )}
           {caso.link_pdf_compilado && (
-            <button type="button" onClick={handleDownloadPdf} disabled={downloadingPdf} style={s.primaryBtn}>
+            <button type="button" onClick={handleDownloadPdf} disabled={downloadingPdf} style={{ ...s.primaryBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>
               {downloadingPdf ? 'Baixando...' : '📄 Baixar Dossiê PDF'}
             </button>
           )}
           {canSign && (
-            <button onClick={abrirModalAssinatura} style={s.signBtn}>✍️ Assinar</button>
+            <button onClick={abrirModalAssinatura} style={{ ...s.signBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>✍️ Assinar</button>
           )}
           {(isOperador || isAdmin) && caso.status === STATUS_AGUARDANDO_IMPRESSAO && (
-            <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={s.signBtn}>
+            <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={{ ...s.signBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>
               {confirmandoImpressao ? 'Processando...' : '🖨️ Imprimir (3 vias) e Finalizar'}
             </button>
           )}
@@ -729,7 +735,7 @@ export default function CasoDetail() {
       {/* Dados do Caso */}
       {editMode ? (
         <form onSubmit={handleSalvarEdicao} style={s.card}>
-          <div style={s.cardHeader}>
+          <div style={{ ...s.cardHeader, ...(isMobile ? s.cardHeaderMobile : {}) }}>
             <h3 style={s.cardTitle}>Editar Dados do Caso</h3>
           </div>
           <div style={{ ...s.grid2, ...(isMobile ? { gridTemplateColumns: '1fr' } : {}) }}>
@@ -758,14 +764,14 @@ export default function CasoDetail() {
               <textarea style={{ ...s.input, resize: 'vertical' }} rows={3} value={editForm.observacoes} onChange={e => setEditForm({ ...editForm, observacoes: e.target.value })} />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setEditMode(false)} style={s.cancelBtn}>Cancelar</button>
-            <button type="submit" style={s.primaryBtn}>Salvar</button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end', ...(isMobile ? s.formActionsMobile : {}) }}>
+            <button type="button" onClick={() => setEditMode(false)} style={{ ...s.cancelBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>Cancelar</button>
+            <button type="submit" style={{ ...s.primaryBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>Salvar</button>
           </div>
         </form>
       ) : (
         <div style={s.card}>
-          <div style={s.cardHeader}>
+          <div style={{ ...s.cardHeader, ...(isMobile ? s.cardHeaderMobile : {}) }}>
             <h3 style={s.cardTitle}>Dados do Caso</h3>
             <RebateBadge status={caso.status_rebate} />
           </div>
@@ -787,7 +793,7 @@ export default function CasoDetail() {
 
       {/* Documentos */}
       <div style={s.card}>
-        <div style={s.cardHeader}>
+        <div style={{ ...s.cardHeader, ...(isMobile ? s.cardHeaderMobile : {}) }}>
           <h3 style={s.cardTitle}>Conciliação de Créditos</h3>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>
             Total Alocado: {formatMoney(totalCreditoAlocado)}
@@ -832,10 +838,10 @@ export default function CasoDetail() {
 
       {/* Documentos */}
       <div style={s.card}>
-        <div style={s.cardHeader}>
+        <div style={{ ...s.cardHeader, ...(isMobile ? s.cardHeaderMobile : {}) }}>
           <h3 style={s.cardTitle}>Documentos</h3>
           {isAdmin && !isFinalOrReprovado && (
-            <button onClick={handleCompilarPdf} disabled={compilando} style={s.outlineBtn}>
+            <button onClick={handleCompilarPdf} disabled={compilando} style={{ ...s.outlineBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>
               {compilando ? 'Compilando...' : '🗂️ Compilar PDF'}
             </button>
           )}
@@ -885,20 +891,20 @@ export default function CasoDetail() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, ...(isMobile ? s.docActionsMobile : {}) }}>
                   {doc && (
                     <button
                       type="button"
                       onClick={() => handleAbrirDocumento(doc)}
                       disabled={!!downloadingDocs[doc.id]}
-                      style={s.docDownBtn}
+                      style={{ ...s.docDownBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}
                     >
                       {downloadingDocs[doc.id] ? 'Abrindo...' : 'Abrir'}
                     </button>
                   )}
                   {canManageOfficeDocs && (
                     <>
-                      <label style={s.docUpBtn}>
+                      <label style={{ ...s.docUpBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}>
                         {isUploading ? '...' : doc ? '🔄 Substituir' : '⬆ Enviar'}
                         <input
                           type="file"
@@ -910,7 +916,7 @@ export default function CasoDetail() {
                         />
                       </label>
                       {doc && (
-                        <button onClick={() => handleDeleteDoc(doc.id, doc.nome_arquivo)} style={s.docDelBtn}>🗑</button>
+                        <button onClick={() => handleDeleteDoc(doc.id, doc.nome_arquivo)} style={{ ...s.docDelBtn, ...(isMobile ? s.mobileDocDeleteBtn : {}) }}>🗑</button>
                       )}
                     </>
                   )}
@@ -954,20 +960,20 @@ export default function CasoDetail() {
                 Aceita foto com qualquer extensão, desde que o conteúdo seja uma imagem válida.
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, ...(isMobile ? s.docActionsMobile : {}) }}>
               {fotoEstoqueAtual && (
                 <button
                   type="button"
                   onClick={() => handleAbrirDocumento(fotoEstoqueAtual)}
                   disabled={!!downloadingDocs[fotoEstoqueAtual.id]}
-                  style={s.docDownBtn}
+                  style={{ ...s.docDownBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}
                 >
                   {downloadingDocs[fotoEstoqueAtual.id] ? 'Abrindo...' : 'Abrir'}
                 </button>
               )}
               {podeAnexarFotoEstoque && (
                 <>
-                  <label style={s.docUpBtn}>
+                  <label style={{ ...s.docUpBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}>
                     {uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE] ? '...' : fotoEstoqueAtual ? '🔄 Substituir' : '⬆ Enviar'}
                     <input
                       type="file"
@@ -978,7 +984,7 @@ export default function CasoDetail() {
                     />
                   </label>
                   {fotoEstoqueAtual && (
-                    <button onClick={() => handleDeleteDoc(fotoEstoqueAtual.id, fotoEstoqueAtual.nome_arquivo)} style={s.docDelBtn}>🗑</button>
+                    <button onClick={() => handleDeleteDoc(fotoEstoqueAtual.id, fotoEstoqueAtual.nome_arquivo)} style={{ ...s.docDelBtn, ...(isMobile ? s.mobileDocDeleteBtn : {}) }}>🗑</button>
                   )}
                 </>
               )}
@@ -994,25 +1000,23 @@ export default function CasoDetail() {
               return (
                 <div key={doc.id} style={{ ...s.docRow, background: '#f8fafc' }}>
                 <div style={s.docIcon}>
-                  {doc.tipo_documento === 'Vídeo de Descarte' ? '🎥' : '📎'}
+                  📎
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{doc.tipo_documento}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                     {doc.nome_arquivo} · {doc.tamanho_bytes ? `${(doc.tamanho_bytes / 1024 / 1024).toFixed(1)} MB` : ''}
                   </div>
-                  {doc.tipo_documento !== 'Vídeo de Descarte' && (
-                    <div style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>
-                      {assinaturaResumo.texto}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 11, color: '#334155', marginTop: 3 }}>
+                    {assinaturaResumo.texto}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, ...(isMobile ? s.docActionsMobile : {}) }}>
                   <button
                     type="button"
                     onClick={() => handleAbrirDocumento(doc)}
                     disabled={!!downloadingDocs[doc.id]}
-                    style={s.docDownBtn}
+                    style={{ ...s.docDownBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}
                   >
                     {downloadingDocs[doc.id] ? 'Abrindo...' : 'Abrir'}
                   </button>
@@ -1071,7 +1075,7 @@ export default function CasoDetail() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {caso.assinaturas.map((sig) => (
                 <div key={sig.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap',
                   background: sig.status_decisao === 'Aprovado' ? '#f0fdf4' : '#fff1f2',
                   borderRadius: 8, padding: '10px 14px',
                   border: `1px solid ${sig.status_decisao === 'Aprovado' ? '#bbf7d0' : '#fecaca'}`,
@@ -1108,7 +1112,7 @@ export default function CasoDetail() {
             <p style={{ fontSize: 13, color: '#1e40af', marginBottom: 12, fontWeight: 600 }}>
               ✍️ Este caso aguarda sua assinatura ({caso.status})
             </p>
-            <button onClick={abrirModalAssinatura} style={s.signBtn}>Assinar Agora</button>
+            <button onClick={abrirModalAssinatura} style={{ ...s.signBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>Assinar Agora</button>
           </div>
         )}
 
@@ -1131,7 +1135,7 @@ export default function CasoDetail() {
             <p style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>1ª via: Financeiro</p>
             <p style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>2ª via: Estoque</p>
             <p style={{ fontSize: 12, color: '#166534', marginBottom: 12 }}>3ª via: Controle da oficina</p>
-            <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={s.signBtn}>
+            <button onClick={handleConfirmarImpressao} disabled={confirmandoImpressao} style={{ ...s.signBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>
               {confirmandoImpressao ? 'Processando...' : 'Imprimir (3 vias) e Finalizar'}
             </button>
           </div>
@@ -1380,6 +1384,9 @@ const s = {
     display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
     marginBottom: 24, flexWrap: 'wrap', gap: 16,
   },
+  headerActionsMobile: { width: '100%', flexDirection: 'column', alignItems: 'stretch' },
+  headerActionBtnMobile: { width: '100%', minHeight: 42, justifyContent: 'center', textAlign: 'center' },
+  formActionsMobile: { flexDirection: 'column-reverse', alignItems: 'stretch' },
   back: { color: 'var(--text-muted)', fontSize: 13, textDecoration: 'none', display: 'block', marginBottom: 6 },
   title: { fontSize: 22, fontWeight: 800, color: 'var(--text)', display: 'inline-block' },
   sub: { color: 'var(--text-muted)', fontSize: 13, marginTop: 4 },
@@ -1388,6 +1395,7 @@ const s = {
     boxShadow: 'var(--shadow)', border: '1px solid var(--border)', marginBottom: 16,
   },
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)' },
+  cardHeaderMobile: { flexDirection: 'column', alignItems: 'flex-start', gap: 10 },
   cardTitle: { fontSize: 15, fontWeight: 700, color: 'var(--text)' },
   infoGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 20px',
@@ -1424,6 +1432,9 @@ const s = {
     background: '#fff', fontSize: 12, color: 'var(--primary)', fontWeight: 600,
     cursor: 'pointer', whiteSpace: 'nowrap',
   },
+  docActionsMobile: { width: '100%', flexWrap: 'wrap' },
+  mobileDocActionBtn: { flex: '1 1 auto', minHeight: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+  mobileDocDeleteBtn: { minWidth: 46, minHeight: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
   docDelBtn: {
     padding: '5px 8px', borderRadius: 6, border: '1px solid #fecaca',
     background: '#fff', fontSize: 12, cursor: 'pointer', color: '#ef4444',

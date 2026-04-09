@@ -50,9 +50,11 @@ DOCS_OPCIONAIS = {
 
 STATUS_AGUARDANDO_IMPRESSAO = "Aguardando Impressão Oficina"
 STATUS_AGUARDANDO_ESTOQUE = "Aguardando Conferência Estoque"
+STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO = "Aguardando Vídeo Descarte"
 STATUS_ETAPA_ESTOQUE_COMPAT = {
     STATUS_AGUARDANDO_ESTOQUE,
     STATUS_AGUARDANDO_IMPRESSAO,  # compatibilidade para casos legados
+    STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO,  # legado de fluxo antigo de bateria
 }
 STATUS_BLOQUEIA_EDICAO = {
     "Aguardando Aprovação Diretoria",
@@ -73,7 +75,7 @@ STATUS_FLOW = {
     STATUS_AGUARDANDO_IMPRESSAO: 4,
     "Finalizado": 5,
     "Reprovado": 6,
-    "Aguardando Vídeo Descarte": 3,  # legado
+    STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO: 3,  # legado
 }
 
 try:
@@ -325,7 +327,29 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
     )
     if not caso:
         raise HTTPException(status_code=404, detail="Caso não encontrado")
+    if caso.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO:
+        # Migração automática de status legado para manter a esteira atual
+        # (Diretoria -> Gestor de Estoque -> conclusão).
+        caso.status = STATUS_AGUARDANDO_ESTOQUE
+        caso.atualizado_em = datetime.utcnow()
+        db.flush()
     return caso
+
+
+def _migrar_status_legado_video_para_estoque(db: Session) -> None:
+    atualizados = (
+        db.query(models.CasoGarantia)
+        .filter(models.CasoGarantia.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO)
+        .update(
+            {
+                models.CasoGarantia.status: STATUS_AGUARDANDO_ESTOQUE,
+                models.CasoGarantia.atualizado_em: datetime.utcnow(),
+            },
+            synchronize_session=False,
+        )
+    )
+    if atualizados:
+        db.commit()
 
 
 def _codigo_caso(caso: models.CasoGarantia) -> str:
@@ -794,6 +818,7 @@ def listar_casos(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
+    _migrar_status_legado_video_para_estoque(db)
     q = (
         db.query(models.CasoGarantia)
         .options(joinedload(models.CasoGarantia.cliente))
@@ -825,6 +850,7 @@ def dashboard_stats(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
+    _migrar_status_legado_video_para_estoque(db)
     total = db.query(models.CasoGarantia).count()
     aguardando_docs = db.query(models.CasoGarantia).filter(
         models.CasoGarantia.status == "Aguardando Documentos"
@@ -932,6 +958,7 @@ def obter_caso(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
+    _migrar_status_legado_video_para_estoque(db)
     caso = _load_caso(caso_id, db)
     if caso.status == STATUS_AGUARDANDO_DOCUMENTOS and _check_docs_completos(caso):
         codigo = _codigo_caso(caso)
@@ -1949,91 +1976,6 @@ def confirmar_impressao_oficina(
         case_id=caso_id,
     )
     db.commit()
-
-    return _load_caso(caso_id, db)
-
-
-@router.post("/{caso_id}/video-descarte", response_model=schemas.CasoOut)
-async def upload_video_descarte(
-    caso_id: int,
-    arquivo: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador"))
-):
-    """Upload do vídeo de descarte para casos de bateria (etapa após aprovação diretoria)."""
-    caso = _load_caso(caso_id, db)
-    status_anterior = caso.status
-    if caso.status != "Aguardando Vídeo Descarte":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Caso não está aguardando vídeo de descarte. Status atual: {caso.status}"
-        )
-
-    ext = Path(arquivo.filename).suffix.lower()
-    if ext not in {".mp4", ".mov", ".avi", ".mkv", ".webm"}:
-        raise HTTPException(status_code=400, detail="Formato de vídeo inválido")
-
-    case_dir = os.path.join(UPLOADS_DIR, str(caso_id))
-    os.makedirs(case_dir, exist_ok=True)
-
-    unique_name = f"video_descarte_{uuid.uuid4().hex}{ext}"
-    file_path = os.path.join(case_dir, unique_name)
-
-    content = await arquivo.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    doc = models.Documento(
-        case_id=caso_id,
-        tipo_documento="Vídeo de Descarte",
-        nome_arquivo=arquivo.filename,
-        path_arquivo=file_path,
-        mime_type=_resolver_mime_type(arquivo.filename, file_path, arquivo.content_type),
-        tamanho_bytes=len(content)
-    )
-    db.add(doc)
-
-    caso_db = db.query(models.CasoGarantia).filter(models.CasoGarantia.id == caso_id).first()
-    caso_db.status = "Finalizado"
-    caso_db.status_rebate = "Finalizado"
-    caso_db.atualizado_em = datetime.utcnow()
-    db.flush()
-    registrar_evento_auditoria(
-        db,
-        acao="video_descarte_anexado",
-        modulo="casos_documentos",
-        descricao=f"Vídeo de descarte anexado e caso {_codigo_caso(caso)} finalizado.",
-        usuario=current_user,
-        case_id=caso_id,
-        entidade="documento",
-        entidade_id=doc.id,
-        detalhes={
-            "nome_arquivo": doc.nome_arquivo,
-            "status_de": status_anterior,
-            "status_para": caso_db.status,
-        },
-    )
-    _notificar_operacao_todos(
-        db,
-        tipo="operacao_caso_finalizado",
-        titulo="Caso finalizado com vídeo de descarte",
-        mensagem=(
-            f"{_nome_usuario(current_user)} anexou vídeo de descarte e finalizou "
-            f"{_codigo_caso(caso)}."
-        ),
-        case_id=caso_id,
-    )
-    db.commit()
-
-    # Compilar PDF
-    caso_final = _load_caso(caso_id, db)
-    try:
-        _compilar_pdf(caso_final, db)
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Vídeo registrado, mas houve erro na compilação do dossiê PDF: {exc}"
-        ) from exc
 
     return _load_caso(caso_id, db)
 

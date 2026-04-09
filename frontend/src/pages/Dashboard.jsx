@@ -167,7 +167,6 @@ const PENDING_STATUSES = [
   'Aguardando Aprovação Diretoria',
   'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
-  'Aguardando Vídeo Descarte',
 ]
 
 const PENDING_STATUS_CONFIG = [
@@ -196,11 +195,6 @@ const PENDING_STATUS_CONFIG = [
     label: 'Impressão e Finalização',
     to: '/impressao-finalizacao',
   },
-  {
-    status: 'Aguardando Vídeo Descarte',
-    label: 'Vídeo de Descarte',
-    to: `/casos?status=${encodeURIComponent('Aguardando Vídeo Descarte')}`,
-  },
 ]
 
 const STATUS_VIEW = {
@@ -209,7 +203,6 @@ const STATUS_VIEW = {
   'Aguardando Aprovação Diretoria': { label: 'Aprovação diretor comercial', tone: 'warning' },
   'Aguardando Conferência Estoque': { label: 'Conferência do estoque', tone: 'warning' },
   'Aguardando Impressão Oficina': { label: 'Aguardando impressão', tone: 'success' },
-  'Aguardando Vídeo Descarte': { label: 'Vídeo descarte', tone: 'blue' },
   Finalizado: { label: 'Finalizado', tone: 'success' },
   Reprovado: { label: 'Reprovado', tone: 'danger' },
 }

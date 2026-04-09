@@ -178,7 +178,7 @@ export default function NovoCaso() {
   }
 
   return (
-    <div style={{ maxWidth: 840 }}>
+    <div style={{ width: '100%', maxWidth: 840 }}>
       <div style={s.header}>
         <Link to="/casos" style={s.backBtn}>← Voltar</Link>
         <div>
@@ -258,7 +258,12 @@ export default function NovoCaso() {
                 ))}
               </select>
             </div>
-            <button type="button" onClick={() => setNovoClienteModal(true)} style={s.outlineBtn} disabled={!podeAbrirCaso}>
+            <button
+              type="button"
+              onClick={() => setNovoClienteModal(true)}
+              style={{ ...s.outlineBtn, ...(isMobile ? s.actionBtnMobile : {}) }}
+              disabled={!podeAbrirCaso}
+            >
               + Novo Cliente
             </button>
           </div>
@@ -325,17 +330,17 @@ export default function NovoCaso() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <Link to="/casos" style={s.cancelBtn}>Cancelar</Link>
-          <button type="submit" disabled={loading || !podeAbrirCaso} style={s.submitBtn}>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap', ...(isMobile ? s.formActionsMobile : {}) }}>
+          <Link to="/casos" style={{ ...s.cancelBtn, ...(isMobile ? s.actionBtnMobile : {}) }}>Cancelar</Link>
+          <button type="submit" disabled={loading || !podeAbrirCaso} style={{ ...s.submitBtn, ...(isMobile ? s.actionBtnMobile : {}) }}>
             {loading ? 'Criando caso e enviando documentos...' : '✓ Criar Caso + Iniciar Esteira de Assinatura'}
           </button>
         </div>
       </form>
 
       {novoClienteModal && (
-        <div style={s.modalOverlay}>
-          <div style={s.modal}>
+        <div style={{ ...s.modalOverlay, ...(isMobile ? s.modalOverlayMobile : {}) }}>
+          <div style={{ ...s.modal, ...(isMobile ? s.modalMobile : {}) }}>
             <h3 style={{ marginBottom: 20, fontSize: 18, fontWeight: 700 }}>Novo Cliente</h3>
             <form onSubmit={handleCriarCliente}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -377,9 +382,9 @@ export default function NovoCaso() {
                   />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setNovoClienteModal(false)} style={s.cancelBtn}>Cancelar</button>
-                <button type="submit" disabled={criandoCliente} style={s.submitBtn}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', ...(isMobile ? s.formActionsMobile : {}) }}>
+                <button type="button" onClick={() => setNovoClienteModal(false)} style={{ ...s.cancelBtn, ...(isMobile ? s.actionBtnMobile : {}) }}>Cancelar</button>
+                <button type="submit" disabled={criandoCliente} style={{ ...s.submitBtn, ...(isMobile ? s.actionBtnMobile : {}) }}>
                   {criandoCliente ? 'Salvando...' : 'Salvar Cliente'}
                 </button>
               </div>
@@ -479,8 +484,12 @@ const s = {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20,
   },
+  modalOverlayMobile: { padding: 10 },
   modal: {
     background: '#fff', borderRadius: 12, padding: '28px 28px',
     width: '100%', maxWidth: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
   },
+  modalMobile: { borderRadius: 10, padding: 14, maxHeight: '90vh', overflowY: 'auto' },
+  formActionsMobile: { flexDirection: 'column-reverse', alignItems: 'stretch' },
+  actionBtnMobile: { width: '100%', minHeight: 42, justifyContent: 'center', textAlign: 'center' },
 }

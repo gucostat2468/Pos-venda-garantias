@@ -118,7 +118,7 @@ export default function Usuarios() {
           <h1 style={s.title}>Usuários</h1>
           <p style={s.sub}>{usuarios.length} usuário(s) cadastrado(s)</p>
         </div>
-        <button onClick={() => openModal()} style={s.newBtn}>+ Novo Usuário</button>
+        <button onClick={() => openModal()} style={{ ...s.newBtn, ...(isMobile ? s.newBtnMobile : {}) }}>+ Novo Usuário</button>
       </div>
 
       <div style={s.tableCard}>
@@ -252,8 +252,8 @@ export default function Usuarios() {
 
       {/* Modal Criar/Editar */}
       {modal && (
-        <div style={s.overlay}>
-          <div style={s.modal}>
+        <div style={{ ...s.overlay, ...(isMobile ? s.overlayMobile : {}) }}>
+          <div style={{ ...s.modal, ...(isMobile ? s.modalMobile : {}) }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
               {editando ? 'Editar Usuário' : 'Novo Usuário'}
             </h3>
@@ -281,9 +281,9 @@ export default function Usuarios() {
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setModal(false)} style={s.cancelBtn}>Cancelar</button>
-                <button type="submit" disabled={saving} style={s.saveBtn}>{saving ? 'Salvando...' : 'Salvar'}</button>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', ...(isMobile ? s.modalActionsMobile : {}) }}>
+                <button type="button" onClick={() => setModal(false)} style={{ ...s.cancelBtn, ...(isMobile ? s.modalActionBtnMobile : {}) }}>Cancelar</button>
+                <button type="submit" disabled={saving} style={{ ...s.saveBtn, ...(isMobile ? s.modalActionBtnMobile : {}) }}>{saving ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </form>
           </div>
@@ -292,17 +292,17 @@ export default function Usuarios() {
 
       {/* Modal Reset Senha */}
       {resetModal && (
-        <div style={s.overlay}>
-          <div style={s.modal}>
+        <div style={{ ...s.overlay, ...(isMobile ? s.overlayMobile : {}) }}>
+          <div style={{ ...s.modal, ...(isMobile ? s.modalMobile : {}) }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Redefinir Senha</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 20 }}>{resetModal.nome}</p>
             <div>
               <label style={s.label}>Nova Senha (mínimo 6 caracteres)</label>
               <input type="password" style={s.input} value={novaSenha} onChange={e => setNovaSenha(e.target.value)} />
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setResetModal(null); setNovaSenha('') }} style={s.cancelBtn}>Cancelar</button>
-              <button onClick={handleResetSenha} disabled={resetting} style={s.saveBtn}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', ...(isMobile ? s.modalActionsMobile : {}) }}>
+              <button onClick={() => { setResetModal(null); setNovaSenha('') }} style={{ ...s.cancelBtn, ...(isMobile ? s.modalActionBtnMobile : {}) }}>Cancelar</button>
+              <button onClick={handleResetSenha} disabled={resetting} style={{ ...s.saveBtn, ...(isMobile ? s.modalActionBtnMobile : {}) }}>
                 {resetting ? 'Redefinindo...' : 'Redefinir'}
               </button>
             </div>
@@ -318,6 +318,7 @@ const s = {
   title: { fontSize: 24, fontWeight: 800, marginBottom: 2 },
   sub: { color: 'var(--text-muted)', fontSize: 13 },
   newBtn: { background: 'var(--primary)', color: '#fff', padding: '9px 18px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+  newBtnMobile: { width: '100%', minHeight: 42 },
   tableCard: { background: '#fff', borderRadius: 10, boxShadow: 'var(--shadow)', border: '1px solid var(--border)', overflow: 'hidden' },
   loading: { textAlign: 'center', padding: 60, color: 'var(--text-muted)' },
   mobileList: { display: 'grid', gap: 10, padding: 10 },
@@ -332,10 +333,14 @@ const s = {
   editBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
   delBtn: { padding: '4px 8px', borderRadius: 6, border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', fontSize: 12 },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 },
+  overlayMobile: { padding: 10 },
   modal: { background: '#fff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' },
+  modalMobile: { borderRadius: 10, padding: 14, maxHeight: '90vh', overflowY: 'auto' },
   errorBox: { background: '#fee2e2', color: '#991b1b', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: 13 },
   label: { display: 'block', fontWeight: 600, fontSize: 13, marginBottom: 6 },
   input: { width: '100%', padding: '9px 12px', borderRadius: 7, border: '1.5px solid var(--border)', fontSize: 13, outline: 'none' },
   cancelBtn: { padding: '9px 18px', borderRadius: 7, border: '1.5px solid var(--border)', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   saveBtn: { padding: '9px 18px', borderRadius: 7, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  modalActionsMobile: { flexDirection: 'column-reverse', alignItems: 'stretch' },
+  modalActionBtnMobile: { width: '100%', minHeight: 42, justifyContent: 'center' },
 }

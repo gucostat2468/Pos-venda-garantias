@@ -59,10 +59,6 @@ export const casosAPI = {
   },
   assinar: (id, data) => api.post(`/casos/${id}/assinar`, data),
   confirmarImpressao: (id) => api.post(`/casos/${id}/confirmar-impressao`),
-  uploadVideoDescarte: (id, formData) => api.post(`/casos/${id}/video-descarte`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 300000,
-  }),
   compilarPdf: (id) => api.post(`/casos/${id}/compilar-pdf`),
   downloadPdfFile: (id, params) => api.get(`/casos/${id}/pdf`, { responseType: 'blob', params }),
   listarCreditoVinculos: (id) => api.get(`/casos/${id}/credito-vinculos`),

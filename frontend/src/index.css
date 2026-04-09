@@ -37,6 +37,12 @@
   --content-max-width: 1540px;
 }
 
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif;
   background:
@@ -51,6 +57,7 @@ body {
 
 #root {
   min-height: 100vh;
+  width: 100%;
 }
 
 a {
@@ -656,6 +663,11 @@ textarea:focus-visible {
   width: 100%;
   max-width: var(--content-max-width);
   margin: 0 auto;
+  overflow-x: hidden;
+}
+
+.dp-content > * {
+  min-width: 0;
 }
 
 .dp-mobile-overlay {
@@ -2386,7 +2398,7 @@ textarea:focus-visible {
   }
 
   .dp-notif-panel {
-    right: -42px;
+    right: 0;
     width: min(390px, calc(100vw - 20px));
   }
 
