@@ -814,6 +814,7 @@ def listar_casos(
     status: Optional[str] = Query(None),
     tipo_processo: Optional[str] = Query(None),
     cliente_id: Optional[int] = Query(None),
+    criado_por_usuario_id: Optional[int] = Query(None),
     busca: Optional[str] = Query(None),
     assinatura_etapa: Optional[str] = Query(None, pattern="^(Pos-venda|Diretoria|Estoque)$"),
     db: Session = Depends(get_db),
@@ -834,6 +835,8 @@ def listar_casos(
         q = q.filter(models.CasoGarantia.tipo_processo == tipo_processo)
     if cliente_id:
         q = q.filter(models.CasoGarantia.cliente_id == cliente_id)
+    if criado_por_usuario_id:
+        q = q.filter(models.CasoGarantia.criado_por_usuario_id == criado_por_usuario_id)
     if busca:
         q = q.filter(
             models.CasoGarantia.dji_case_id.ilike(f"%{busca}%") |

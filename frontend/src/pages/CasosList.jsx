@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { casosAPI, clientesAPI } from '../api'
 import { StatusBadge, TipoBadge, RebateBadge } from '../components/StatusBadge'
@@ -98,6 +98,7 @@ const FILA_ASSINATURA_CONFIG = {
 }
 const STATUS_LEGADO_IMPRESSAO = 'Aguardando Impressão Oficina'
 const STATUS_ETAPA_ESTOQUE_COMPAT = new Set(['Aguardando Conferência Estoque', STATUS_LEGADO_IMPRESSAO])
+const FILTRO_SOLICITANTE_INDEFINIDO = '__nao_identificado__'
 const PAPEL_LABEL = {
   operador: 'Time Oficina',
   gerente_pos_venda: 'Gerente Pós-venda',
@@ -164,8 +165,22 @@ export default function CasosList() {
   const [filtroStatus, setFiltroStatus] = useState(() => resolverStatusBusca(searchParams))
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
+  const [filtroSolicitante, setFiltroSolicitante] = useState('')
+  const [solicitantesDisponiveis, setSolicitantesDisponiveis] = useState([])
   const filaConfig = FILA_ASSINATURA_CONFIG[filtroStatus] || null
   const ultimoScrollYRef = useRef(0)
+
+  const opcoesSolicitante = useMemo(() => {
+    const base = [...solicitantesDisponiveis]
+    if (
+      filtroSolicitante
+      && filtroSolicitante !== FILTRO_SOLICITANTE_INDEFINIDO
+      && !base.some((item) => item.id === filtroSolicitante)
+    ) {
+      base.push({ id: filtroSolicitante, label: `Usuário #${filtroSolicitante}` })
+    }
+    return base.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }))
+  }, [solicitantesDisponiveis, filtroSolicitante])
 
   const memorizarScrollAtual = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -202,6 +217,26 @@ export default function CasosList() {
     }
   }, [searchParamsKey, setSearchParams])
 
+  const atualizarSolicitantesDisponiveis = useCallback((listas) => {
+    const todasListas = Array.isArray(listas) ? listas : [listas]
+    setSolicitantesDisponiveis((prev) => {
+      const map = new Map((prev || []).map((item) => [item.id, item]))
+      todasListas.forEach((lista) => {
+        const arr = Array.isArray(lista) ? lista : []
+        arr.forEach((caso) => {
+          const solicitanteId = caso?.criado_por?.id ?? caso?.criado_por_usuario_id
+          if (!solicitanteId) return
+          const id = String(solicitanteId)
+          map.set(id, {
+            id,
+            label: formatarSolicitante(caso),
+          })
+        })
+      })
+      return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }))
+    })
+  }, [])
+
   const fetchCasos = useCallback(async ({ silent = false } = {}) => {
     if (silent) memorizarScrollAtual()
     const acessoFilaEstoqueBloqueado =
@@ -220,7 +255,16 @@ export default function CasosList() {
       const baseParams = {}
       if (filtroTipo) baseParams.tipo_processo = filtroTipo
       if (filtroCliente) baseParams.cliente_id = filtroCliente
+      if (filtroSolicitante && filtroSolicitante !== FILTRO_SOLICITANTE_INDEFINIDO) {
+        baseParams.criado_por_usuario_id = Number(filtroSolicitante)
+      }
       if (busca) baseParams.busca = busca
+
+      const filtrarSolicitanteNaoIdentificado = (lista) => {
+        const arr = Array.isArray(lista) ? lista : []
+        if (filtroSolicitante !== FILTRO_SOLICITANTE_INDEFINIDO) return arr
+        return arr.filter((caso) => !caso?.criado_por?.id && !caso?.criado_por_usuario_id)
+      }
 
       if (filaConfig) {
         const isFilaEstoque = filtroStatus === 'Aguardando Conferência Estoque'
@@ -234,16 +278,18 @@ export default function CasosList() {
 
         const pendDataBase = Array.isArray(pendRes.data) ? pendRes.data : []
         const pendDataLegado = Array.isArray(pendResLegado.data) ? pendResLegado.data : []
+        const histData = Array.isArray(histRes.data) ? histRes.data : []
+        atualizarSolicitantesDisponiveis([pendDataBase, pendDataLegado, histData])
         const pendMap = new Map()
         const pendDataMerge = [...pendDataBase, ...pendDataLegado]
         pendDataMerge
           .filter((caso) => !isFilaEstoque || STATUS_ETAPA_ESTOQUE_COMPAT.has(caso.status))
           .forEach((caso) => pendMap.set(caso.id, caso))
-        const pendData = [...pendMap.values()]
-        const histData = Array.isArray(histRes.data) ? histRes.data : []
+        const pendData = filtrarSolicitanteNaoIdentificado([...pendMap.values()])
+        const histDataFiltrado = filtrarSolicitanteNaoIdentificado(histData)
 
         const historicoMap = new Map()
-        histData
+        histDataFiltrado
           .filter((caso) => filaConfig.historicoStatus.has(caso.status) && caso.status !== filtroStatus)
           .forEach((caso) => {
             historicoMap.set(caso.id, caso)
@@ -264,7 +310,9 @@ export default function CasosList() {
         const params = { ...baseParams }
         if (filtroStatus) params.status = filtroStatus
         const res = await casosAPI.listar(params)
-        const lista = Array.isArray(res.data) ? res.data : []
+        const listaBase = Array.isArray(res.data) ? res.data : []
+        atualizarSolicitantesDisponiveis(listaBase)
+        const lista = filtrarSolicitanteNaoIdentificado(listaBase)
         setCasos((prev) => (mesmaListaCasos(prev, lista) ? prev : lista))
         setHistoricoAssinados((prev) => (prev.length === 0 ? prev : []))
       }
@@ -281,9 +329,11 @@ export default function CasosList() {
     filtroStatus,
     filtroTipo,
     filtroCliente,
+    filtroSolicitante,
     busca,
     filaConfig,
     isGestorEstoque,
+    atualizarSolicitantesDisponiveis,
     memorizarScrollAtual,
     restaurarScrollSeSaltou,
   ])
@@ -313,6 +363,7 @@ export default function CasosList() {
     setBusca('')
     setFiltroTipo('')
     setFiltroCliente('')
+    setFiltroSolicitante('')
     if (!filaConfig) {
       atualizarFiltroStatus('')
     }
@@ -378,7 +429,14 @@ export default function CasosList() {
             <option value="">Todos os clientes</option>
             {clientes.map(c => <option key={c.id} value={c.id}>{c.razao_social}</option>)}
           </select>
-          {(busca || filtroStatus || filtroTipo || filtroCliente) && (
+          <select value={filtroSolicitante} onChange={e => setFiltroSolicitante(e.target.value)} style={s.select}>
+            <option value="">Todos os solicitantes</option>
+            {opcoesSolicitante.map((opcao) => (
+              <option key={opcao.id} value={opcao.id}>{opcao.label}</option>
+            ))}
+            <option value={FILTRO_SOLICITANTE_INDEFINIDO}>Não identificado</option>
+          </select>
+          {(busca || filtroStatus || filtroTipo || filtroCliente || filtroSolicitante) && (
             <button onClick={handleLimpar} style={s.clearBtn}>✕ Limpar</button>
           )}
         </div>
@@ -643,7 +701,7 @@ export default function CasosList() {
             <div style={s.empty}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
               <p style={{ marginBottom: 8 }}>Nenhum caso encontrado</p>
-              {(busca || filtroStatus || filtroTipo || filtroCliente)
+              {(busca || filtroStatus || filtroTipo || filtroCliente || filtroSolicitante)
                 ? <button onClick={handleLimpar} style={s.linkBtn}>Limpar filtros</button>
                 : <Link to="/casos/novo" style={s.linkBtn}>Criar primeiro caso</Link>
               }
