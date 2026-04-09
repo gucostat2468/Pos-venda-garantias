@@ -39,6 +39,7 @@ export const authAPI = {
 // ─── Casos ───────────────────────────────────────────────────────────────────
 export const casosAPI = {
   listar: (params) => api.get('/casos/', { params }),
+  listarSolicitantes: () => api.get('/casos/solicitantes'),
   stats: () => api.get('/casos/stats'),
   criar: (data) => api.post('/casos/', data),
   obter: (id) => api.get(`/casos/${id}`),

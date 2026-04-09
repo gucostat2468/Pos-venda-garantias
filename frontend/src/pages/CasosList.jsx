@@ -166,12 +166,12 @@ export default function CasosList() {
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroSolicitante, setFiltroSolicitante] = useState('')
-  const [solicitantesDisponiveis, setSolicitantesDisponiveis] = useState([])
+  const [solicitantesFiltro, setSolicitantesFiltro] = useState([])
   const filaConfig = FILA_ASSINATURA_CONFIG[filtroStatus] || null
   const ultimoScrollYRef = useRef(0)
 
   const opcoesSolicitante = useMemo(() => {
-    const base = [...solicitantesDisponiveis]
+    const base = [...solicitantesFiltro]
     if (
       filtroSolicitante
       && filtroSolicitante !== FILTRO_SOLICITANTE_INDEFINIDO
@@ -180,7 +180,7 @@ export default function CasosList() {
       base.push({ id: filtroSolicitante, label: `Usuário #${filtroSolicitante}` })
     }
     return base.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }))
-  }, [solicitantesDisponiveis, filtroSolicitante])
+  }, [solicitantesFiltro, filtroSolicitante])
 
   const memorizarScrollAtual = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -216,26 +216,6 @@ export default function CasosList() {
       setSearchParams(next, { replace: true, preventScrollReset: true })
     }
   }, [searchParamsKey, setSearchParams])
-
-  const atualizarSolicitantesDisponiveis = useCallback((listas) => {
-    const todasListas = Array.isArray(listas) ? listas : [listas]
-    setSolicitantesDisponiveis((prev) => {
-      const map = new Map((prev || []).map((item) => [item.id, item]))
-      todasListas.forEach((lista) => {
-        const arr = Array.isArray(lista) ? lista : []
-        arr.forEach((caso) => {
-          const solicitanteId = caso?.criado_por?.id ?? caso?.criado_por_usuario_id
-          if (!solicitanteId) return
-          const id = String(solicitanteId)
-          map.set(id, {
-            id,
-            label: formatarSolicitante(caso),
-          })
-        })
-      })
-      return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }))
-    })
-  }, [])
 
   const fetchCasos = useCallback(async ({ silent = false } = {}) => {
     if (silent) memorizarScrollAtual()
@@ -279,7 +259,6 @@ export default function CasosList() {
         const pendDataBase = Array.isArray(pendRes.data) ? pendRes.data : []
         const pendDataLegado = Array.isArray(pendResLegado.data) ? pendResLegado.data : []
         const histData = Array.isArray(histRes.data) ? histRes.data : []
-        atualizarSolicitantesDisponiveis([pendDataBase, pendDataLegado, histData])
         const pendMap = new Map()
         const pendDataMerge = [...pendDataBase, ...pendDataLegado]
         pendDataMerge
@@ -311,7 +290,6 @@ export default function CasosList() {
         if (filtroStatus) params.status = filtroStatus
         const res = await casosAPI.listar(params)
         const listaBase = Array.isArray(res.data) ? res.data : []
-        atualizarSolicitantesDisponiveis(listaBase)
         const lista = filtrarSolicitanteNaoIdentificado(listaBase)
         setCasos((prev) => (mesmaListaCasos(prev, lista) ? prev : lista))
         setHistoricoAssinados((prev) => (prev.length === 0 ? prev : []))
@@ -333,7 +311,6 @@ export default function CasosList() {
     busca,
     filaConfig,
     isGestorEstoque,
-    atualizarSolicitantesDisponiveis,
     memorizarScrollAtual,
     restaurarScrollSeSaltou,
   ])
@@ -347,6 +324,22 @@ export default function CasosList() {
 
   useEffect(() => {
     clientesAPI.listar().then(r => setClientes(r.data)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    casosAPI
+      .listarSolicitantes()
+      .then((res) => {
+        const lista = Array.isArray(res.data) ? res.data : []
+        const opcoes = lista.map((usuario) => ({
+          id: String(usuario.id),
+          label: `${usuario.nome} (${PAPEL_LABEL[usuario.papel] || usuario.papel || 'Usuário'})`,
+        }))
+        setSolicitantesFiltro(opcoes)
+      })
+      .catch(() => {
+        setSolicitantesFiltro([])
+      })
   }, [])
 
   useEffect(() => {

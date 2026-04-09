@@ -893,6 +893,26 @@ def dashboard_stats(
     }
 
 
+@router.get("/solicitantes", response_model=List[schemas.UsuarioResumoOut])
+def listar_solicitantes_casos(
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_user),
+):
+    """
+    Lista os usuários que podem abrir solicitações (Time Oficina).
+    Usado para o filtro "Solicitado por" da tela de casos.
+    """
+    return (
+        db.query(models.Usuario)
+        .filter(
+            models.Usuario.papel == "operador",
+            models.Usuario.ativo == 1,
+        )
+        .order_by(func.lower(models.Usuario.nome))
+        .all()
+    )
+
+
 @router.post("", response_model=schemas.CasoOut, include_in_schema=False)
 @router.post("/", response_model=schemas.CasoOut)
 def criar_caso(
