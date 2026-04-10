@@ -64,6 +64,7 @@ STATUS_BLOQUEIA_EDICAO = {
 STATUS_AGUARDANDO_DOCUMENTOS = "Aguardando Documentos"
 STATUS_AGUARDANDO_POS_VENDA = "Aguardando Aprovação Pós-Venda"
 STATUS_AGUARDANDO_DIRETORIA = "Aguardando Aprovação Diretoria"
+TIPOS_PROCESSO_PERMITIDOS = ("Peca", "Bateria", "Carregador", "Controle")
 
 STATUS_FLOW = {
     "Aguardando Documentos": 0,
@@ -340,6 +341,14 @@ def _migrar_status_legado_video_para_estoque(db: Session) -> None:
 
 def _codigo_caso(caso: models.CasoGarantia) -> str:
     return caso.dji_case_id or f"Caso #{caso.id}"
+
+
+def _validar_tipo_processo(tipo_processo: Optional[str]) -> None:
+    if not tipo_processo:
+        return
+    if tipo_processo not in TIPOS_PROCESSO_PERMITIDOS:
+        permitidos = " | ".join(TIPOS_PROCESSO_PERMITIDOS)
+        raise HTTPException(status_code=400, detail=f"Tipo de processo inválido. Use: {permitidos}")
 
 
 def _nome_usuario(usuario: Optional[models.Usuario]) -> str:
@@ -906,8 +915,7 @@ def criar_caso(
     cliente = db.query(models.Cliente).filter(models.Cliente.id == body.cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
-    if body.tipo_processo not in ["Peca", "Bateria"]:
-        raise HTTPException(status_code=400, detail="Tipo de processo inválido. Use: Peca | Bateria")
+    _validar_tipo_processo(body.tipo_processo)
 
     caso = models.CasoGarantia(
         **body.model_dump(),
@@ -1083,6 +1091,8 @@ def atualizar_caso(
     caso = _load_caso(caso_id, db)
     if caso.status in STATUS_BLOQUEIA_EDICAO:
         raise HTTPException(status_code=400, detail="Caso em etapa final não pode ser editado")
+    if body.tipo_processo is not None:
+        _validar_tipo_processo(body.tipo_processo)
     before = {
         "dji_case_id": caso.dji_case_id,
         "tipo_processo": caso.tipo_processo,

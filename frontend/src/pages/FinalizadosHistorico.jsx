@@ -153,6 +153,8 @@ export default function FinalizadosHistorico() {
             <option value="">Todos os tipos</option>
             <option value="Peca">🔧 Peça</option>
             <option value="Bateria">🔋 Bateria</option>
+            <option value="Carregador">🔌 Carregador</option>
+            <option value="Controle">🎮 Controle</option>
           </select>
           <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} style={s.select}>
             <option value="">Todos os clientes</option>

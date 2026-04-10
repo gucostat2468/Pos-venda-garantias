@@ -55,6 +55,13 @@ const DOCS_FLUXO_OFICINA = [
   },
 ]
 
+const TIPOS_PROCESSO = [
+  { value: 'Peca', icon: '🔧', label: 'Garantia de Peça' },
+  { value: 'Bateria', icon: '🔋', label: 'Garantia de Bateria' },
+  { value: 'Carregador', icon: '🔌', label: 'Garantia de Carregador' },
+  { value: 'Controle', icon: '🎮', label: 'Garantia de Controle' },
+]
+
 function formatFileSize(bytes) {
   if (!Number.isFinite(bytes)) return '-'
   const kb = bytes / 1024
@@ -210,28 +217,28 @@ export default function NovoCaso() {
         <div style={s.card}>
           <h3 style={s.cardTitle}>Tipo de Processo</h3>
           <div style={{ ...s.tipoGrid, ...(isMobile ? { gridTemplateColumns: '1fr' } : {}) }}>
-            {['Peca', 'Bateria'].map((tipo) => (
+            {TIPOS_PROCESSO.map((tipo) => (
               <label
-                key={tipo}
+                key={tipo.value}
                 style={{
                   ...s.tipoOption,
-                  ...(form.tipo_processo === tipo ? s.tipoOptionActive : {}),
+                  ...(form.tipo_processo === tipo.value ? s.tipoOptionActive : {}),
                 }}
               >
                 <input
                   type="radio"
                   name="tipo_processo"
-                  value={tipo}
-                  checked={form.tipo_processo === tipo}
+                  value={tipo.value}
+                  checked={form.tipo_processo === tipo.value}
                   onChange={handleChange('tipo_processo')}
                   style={{ display: 'none' }}
                   disabled={!podeAbrirCaso}
                 />
                 <span style={{ fontSize: 28, display: 'block', marginBottom: 6 }}>
-                  {tipo === 'Peca' ? '🔧' : '🔋'}
+                  {tipo.icon}
                 </span>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>
-                  {tipo === 'Peca' ? 'Garantia de Peça' : 'Garantia de Bateria'}
+                  {tipo.label}
                 </span>
               </label>
             ))}

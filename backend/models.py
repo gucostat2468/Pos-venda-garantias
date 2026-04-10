@@ -46,7 +46,7 @@ class CasoGarantia(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     dji_case_id = Column(String(50), index=True)
-    tipo_processo = Column(String(20), nullable=False)  # Peca | Bateria
+    tipo_processo = Column(String(20), nullable=False)  # Peca | Bateria | Carregador | Controle
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
     criado_por_usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
     produto_nome = Column(String(200))

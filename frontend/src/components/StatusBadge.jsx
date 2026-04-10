@@ -60,9 +60,13 @@ export function RebateBadge({ status }) {
 }
 
 export function TipoBadge({ tipo }) {
-  const config = tipo === 'Peca'
-    ? { color: '#1e40af', bg: '#dbeafe', label: '🔧 Peça' }
-    : { color: '#065f46', bg: '#d1fae5', label: '🔋 Bateria' }
+  const TIPO_CONFIG = {
+    Peca: { color: '#1e40af', bg: '#dbeafe', label: '🔧 Peça' },
+    Bateria: { color: '#065f46', bg: '#d1fae5', label: '🔋 Bateria' },
+    Carregador: { color: '#9a3412', bg: '#ffedd5', label: '🔌 Carregador' },
+    Controle: { color: '#5b21b6', bg: '#ede9fe', label: '🎮 Controle' },
+  }
+  const config = TIPO_CONFIG[tipo] || { color: '#334155', bg: '#e2e8f0', label: `📦 ${tipo || 'Tipo não informado'}` }
   return (
     <span style={{
       display: 'inline-flex',

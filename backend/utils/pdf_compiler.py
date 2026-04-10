@@ -93,7 +93,13 @@ def generate_cover_page(caso_data: dict) -> bytes:
     story.append(Spacer(1, 0.8*cm))
 
     # Dados principais
-    tipo_label = "Garantia de Peças" if caso_data.get("tipo_processo") == "Peca" else "Garantia de Baterias"
+    tipo_processo = caso_data.get("tipo_processo")
+    tipo_label = {
+        "Peca": "Garantia de Peças",
+        "Bateria": "Garantia de Baterias",
+        "Carregador": "Garantia de Carregador",
+        "Controle": "Garantia de Controle",
+    }.get(tipo_processo, tipo_processo or "—")
 
     data_table = [
         ["Caso DJI:", caso_data.get("dji_case_id") or "—"],

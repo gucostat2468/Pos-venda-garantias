@@ -201,6 +201,12 @@ const PAPEL_LABEL = {
   gestor_estoque: 'Gestor de Estoque',
   admin: 'Administrador',
 }
+const DASH_TIPO_META = {
+  Peca: { css: 'is-peca', label: 'Peça' },
+  Bateria: { css: 'is-bateria', label: 'Bateria' },
+  Carregador: { css: 'is-carregador', label: 'Carregador' },
+  Controle: { css: 'is-controle', label: 'Controle' },
+}
 
 function formatCaseCode(caso) {
   if (!caso) {
@@ -266,6 +272,10 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+}
+
+function getDashTipoMeta(tipoProcesso) {
+  return DASH_TIPO_META[tipoProcesso] || { css: 'is-default', label: tipoProcesso || 'Tipo' }
 }
 
 function compiledFilename(pathValue) {
@@ -742,6 +752,7 @@ export default function Dashboard() {
                   ) : (
                     tableRows.map((caso) => {
                       const statusView = STATUS_VIEW[caso.status] || { label: caso.status || '-', tone: 'neutral' }
+                      const tipoMeta = getDashTipoMeta(caso.tipo_processo)
                       return (
                         <article key={caso.id} className="dash-mobile-card">
                           <div className="dash-mobile-head">
@@ -755,8 +766,8 @@ export default function Dashboard() {
                           <div className="dash-mobile-line"><span>Produto</span>{caso.produto_modelo || caso.produto_nome || '-'}</div>
                           <div className="dash-mobile-line"><span>Data</span>{formatDate(caso.data_entrada)}</div>
                           <div className="dash-mobile-foot">
-                            <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
-                              {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}
+                            <span className={`dash-type-pill ${tipoMeta.css}`}>
+                              {tipoMeta.label}
                             </span>
                             <div className="dash-actions-cell">
                               <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
@@ -804,14 +815,15 @@ export default function Dashboard() {
                     ) : (
                       tableRows.map((caso) => {
                         const statusView = STATUS_VIEW[caso.status] || { label: caso.status || '-', tone: 'neutral' }
+                        const tipoMeta = getDashTipoMeta(caso.tipo_processo)
                         return (
                           <tr key={caso.id}>
                             <td>{formatCaseCode(caso)}</td>
                             <td>{caso.cliente?.razao_social || '-'}</td>
                             <td>{formatSolicitante(caso)}</td>
                             <td>
-                              <span className={`dash-type-pill ${caso.tipo_processo === 'Peca' ? 'is-peca' : 'is-bateria'}`}>
-                                {caso.tipo_processo === 'Peca' ? 'Peça' : 'Bateria'}
+                              <span className={`dash-type-pill ${tipoMeta.css}`}>
+                                {tipoMeta.label}
                               </span>
                             </td>
                             <td>{caso.produto_modelo || caso.produto_nome || '-'}</td>
