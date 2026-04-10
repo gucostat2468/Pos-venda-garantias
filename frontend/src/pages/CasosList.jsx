@@ -325,9 +325,16 @@ export default function CasosList() {
   }
 
   const canDeleteCase = Boolean(user)
+  const canDeleteSpecificCase = useCallback(
+    (caso) => canDeleteCase && String(caso?.status || '') !== 'Finalizado',
+    [canDeleteCase]
+  )
 
   const handleDeleteCase = async (caso) => {
-    if (!canDeleteCase) return
+    if (!canDeleteSpecificCase(caso)) {
+      alert('Casos finalizados fazem parte do histórico e não podem ser excluídos.')
+      return
+    }
     const codigo = caso.dji_case_id || `Caso #${caso.id}`
     if (!window.confirm(`Excluir ${codigo}?\n\nEsta ação remove o caso e os arquivos enviados.`)) return
     setDeletingCases((prev) => ({ ...prev, [caso.id]: true }))
@@ -446,7 +453,7 @@ export default function CasosList() {
                       {podeAssinar(caso) && (
                         <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
                       )}
-                      {canDeleteCase && (
+                      {canDeleteSpecificCase(caso) && (
                         <button
                           type="button"
                           onClick={() => handleDeleteCase(caso)}
@@ -495,7 +502,7 @@ export default function CasosList() {
                             {podeAssinar(caso) && (
                               <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ {filaConfig.acaoPendencia}</Link>
                             )}
-                            {canDeleteCase && (
+                            {canDeleteSpecificCase(caso) && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteCase(caso)}
@@ -546,7 +553,7 @@ export default function CasosList() {
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Atualizado:</span><span>{new Date(caso.atualizado_em || caso.criado_em || `${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span></div>
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
-                      {canDeleteCase && (
+                      {canDeleteSpecificCase(caso) && (
                         <button
                           type="button"
                           onClick={() => handleDeleteCase(caso)}
@@ -594,7 +601,7 @@ export default function CasosList() {
                         <td style={s.td}>
                           <div style={s.actionRow}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
-                            {canDeleteCase && (
+                            {canDeleteSpecificCase(caso) && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteCase(caso)}
@@ -667,7 +674,7 @@ export default function CasosList() {
                       {podeAssinar(caso) && (
                         <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
                       )}
-                      {canDeleteCase && (
+                      {canDeleteSpecificCase(caso) && (
                         <button
                           type="button"
                           onClick={() => handleDeleteCase(caso)}
@@ -728,7 +735,7 @@ export default function CasosList() {
                             {podeAssinar(caso) && (
                               <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ Assinar</Link>
                             )}
-                            {canDeleteCase && (
+                            {canDeleteSpecificCase(caso) && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteCase(caso)}
@@ -940,3 +947,4 @@ const s = {
     justifyContent: 'center',
   },
 }
+

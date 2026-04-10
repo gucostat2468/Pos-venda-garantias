@@ -1146,6 +1146,11 @@ def deletar_caso(
     current_user: models.Usuario = Depends(require_roles("admin", "operador", "gerente_pos_venda", "diretor_comercial", "gestor_estoque"))
 ):
     caso = _load_caso(caso_id, db)
+    if caso.status == "Finalizado":
+        raise HTTPException(
+            status_code=400,
+            detail="Casos finalizados fazem parte do histórico e não podem ser excluídos.",
+        )
     codigo = _codigo_caso(caso)
     snapshot = _snapshot_caso_para_exclusao(caso)
     # Remover arquivos físicos

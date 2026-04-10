@@ -362,9 +362,16 @@ export default function Dashboard() {
   const casoAtual = casoDestaque || casos[0] || null
   const codigoCasoAtual = formatCaseCode(casoAtual)
   const canDeleteCase = isAdmin || isOperador
+  const canDeleteSpecificCase = useCallback(
+    (caso) => canDeleteCase && String(caso?.status || '') !== 'Finalizado',
+    [canDeleteCase]
+  )
 
   const handleDeleteCase = async (caso) => {
-    if (!canDeleteCase) return
+    if (!canDeleteSpecificCase(caso)) {
+      alert('Casos finalizados fazem parte do histórico e não podem ser excluídos.')
+      return
+    }
     const codigo = formatCaseCode(caso)
     if (!window.confirm(`Excluir ${codigo}?\n\nEsta ação remove o caso e os arquivos enviados.`)) return
     setDeletingCases((prev) => ({ ...prev, [caso.id]: true }))
@@ -755,7 +762,7 @@ export default function Dashboard() {
                               <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
                                 Ver Caso
                               </Link>
-                              {canDeleteCase && (
+                              {canDeleteSpecificCase(caso) && (
                                 <button
                                   type="button"
                                   className="dash-delete-btn"
@@ -819,7 +826,7 @@ export default function Dashboard() {
                                 <Link className="dash-view-btn" to={`/casos/${caso.id}`}>
                                   Ver Caso
                                 </Link>
-                                {canDeleteCase && (
+                                {canDeleteSpecificCase(caso) && (
                                   <button
                                     type="button"
                                     className="dash-delete-btn"
@@ -846,3 +853,4 @@ export default function Dashboard() {
     </div>
   )
 }
+

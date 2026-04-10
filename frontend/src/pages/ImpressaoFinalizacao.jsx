@@ -124,8 +124,16 @@ export default function ImpressaoFinalizacao() {
     }
   }
 
+  const canDeleteSpecificCase = useCallback(
+    (caso) => canFinalize && String(caso?.status || '') !== 'Finalizado',
+    [canFinalize]
+  )
+
   const handleDeleteCase = async (caso) => {
-    if (!canFinalize) return
+    if (!canDeleteSpecificCase(caso)) {
+      alert('Casos finalizados fazem parte do histórico e não podem ser excluídos.')
+      return
+    }
     const codigo = caso.dji_case_id || `Caso #${caso.id}`
     if (!window.confirm(`Excluir ${codigo}?\n\nEsta ação remove o caso e os arquivos enviados.`)) return
     setDeletingCases((prev) => ({ ...prev, [caso.id]: true }))
@@ -226,7 +234,7 @@ export default function ImpressaoFinalizacao() {
                     <div style={s.mobileActions}>
                       <div style={s.mobileActionRow}>
                         <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
-                        {canFinalize && (
+                        {canDeleteSpecificCase(caso) && (
                           <button
                             type="button"
                             style={{ ...s.deleteBtn, ...s.mobileDeleteBtn }}
@@ -283,7 +291,7 @@ export default function ImpressaoFinalizacao() {
                         <td style={s.td}>
                           <div style={s.actions}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
-                            {canFinalize && (
+                            {canDeleteSpecificCase(caso) && (
                               <button
                                 type="button"
                                 style={s.deleteBtn}
@@ -342,7 +350,7 @@ export default function ImpressaoFinalizacao() {
                     <div style={s.mobileActions}>
                       <div style={s.mobileActionRow}>
                         <Link to={`/casos/${caso.id}`} style={{ ...s.viewBtn, ...s.mobileActionBtn }}>Ver caso</Link>
-                        {canFinalize && (
+                        {canDeleteSpecificCase(caso) && (
                           <button
                             type="button"
                             style={{ ...s.deleteBtn, ...s.mobileDeleteBtn }}
@@ -389,7 +397,7 @@ export default function ImpressaoFinalizacao() {
                         <td style={s.td}>
                           <div style={s.actions}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
-                            {canFinalize && (
+                            {canDeleteSpecificCase(caso) && (
                               <button
                                 type="button"
                                 style={s.deleteBtn}

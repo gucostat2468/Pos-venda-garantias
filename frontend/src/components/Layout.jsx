@@ -144,6 +144,11 @@ const PAGE_META = [
     subtitle: 'Fila final da oficina e histórico de finalizados',
   },
   {
+    test: (path) => path === '/finalizados',
+    title: 'Histórico de Finalizados',
+    subtitle: 'Registro permanente de casos concluídos',
+  },
+  {
     test: (path) => path === '/clientes',
     title: 'Clientes',
     subtitle: 'Base cadastrada de parceiros',
@@ -253,6 +258,7 @@ export default function Layout({ children }) {
     statusQuery === 'Aguardando Aprovação Pós-Venda' ||
     statusQuery === 'Aguardando Aprovação Diretoria'
   const isPrintQueuePath = location.pathname === '/impressao-finalizacao'
+  const isFinalizadosPath = location.pathname === '/finalizados'
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -423,6 +429,12 @@ export default function Layout({ children }) {
       label: 'Imprimir e Finalizar',
       active: isPrintQueuePath,
     }] : []),
+    {
+      to: '/finalizados',
+      icon: '>',
+      label: 'Histórico Finalizados',
+      active: isFinalizadosPath,
+    },
   ]
 
   const menuAdmin = [

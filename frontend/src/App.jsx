@@ -12,6 +12,7 @@ import Usuarios from './pages/Usuarios'
 import CreditoArquivos from './pages/CreditoArquivos'
 import ImpressaoFinalizacao from './pages/ImpressaoFinalizacao'
 import DocumentoViewer from './pages/DocumentoViewer'
+import FinalizadosHistorico from './pages/FinalizadosHistorico'
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { user, isAdmin } = useAuth()
@@ -42,6 +43,7 @@ function AppRoutes() {
       <Route path="/casos/:id" element={<PrivateRoute><CasoDetail /></PrivateRoute>} />
       <Route path="/documento-viewer" element={<AuthOnlyRoute><DocumentoViewer /></AuthOnlyRoute>} />
       <Route path="/impressao-finalizacao" element={<PrivateRoute><ImpressaoFinalizacao /></PrivateRoute>} />
+      <Route path="/finalizados" element={<PrivateRoute><FinalizadosHistorico /></PrivateRoute>} />
       <Route path="/clientes" element={<PrivateRoute><Clientes /></PrivateRoute>} />
       <Route path="/credito" element={<PrivateRoute><CreditoArquivos /></PrivateRoute>} />
       <Route path="/usuarios" element={<PrivateRoute adminOnly><Usuarios /></PrivateRoute>} />
