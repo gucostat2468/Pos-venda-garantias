@@ -4,6 +4,7 @@ import { casosAPI, clientesAPI } from '../api'
 import useMediaQuery from '../hooks/useMediaQuery'
 import useRealtimeRefresh from '../hooks/useRealtimeRefresh'
 import { RebateBadge, TipoBadge } from '../components/StatusBadge'
+import { formatApiDateTimeBR, parseApiDateTime } from '../utils/datetime'
 
 const PAPEL_LABEL = {
   operador: 'Time Oficina',
@@ -21,10 +22,7 @@ function formatDate(value) {
 }
 
 function formatDateTime(value) {
-  if (!value) return '—'
-  const asDate = new Date(value)
-  if (Number.isNaN(asDate.getTime())) return '—'
-  return asDate.toLocaleString('pt-BR')
+  return formatApiDateTimeBR(value)
 }
 
 function formatSolicitante(caso) {
@@ -64,8 +62,8 @@ export default function FinalizadosHistorico() {
       const lista = Array.isArray(res.data) ? res.data : []
       setCasos(
         [...lista].sort((a, b) => {
-          const da = new Date(a.atualizado_em || a.criado_em || 0)
-          const db = new Date(b.atualizado_em || b.criado_em || 0)
+          const da = parseApiDateTime(a.atualizado_em || a.criado_em)?.getTime() || 0
+          const db = parseApiDateTime(b.atualizado_em || b.criado_em)?.getTime() || 0
           return db - da
         })
       )
