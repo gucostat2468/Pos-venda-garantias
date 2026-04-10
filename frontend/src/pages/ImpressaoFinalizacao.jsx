@@ -105,6 +105,7 @@ export default function ImpressaoFinalizacao() {
     const confirmar = window.confirm(
       `Abrir impressão e finalizar o caso ${caso.dji_case_id || `#${caso.id}`}?\n\n` +
       'Este botão executa a última etapa do fluxo.\n' +
+      'O dossiê inclui todos os documentos anexados e assinados.\n' +
       'Imprima em 3 vias:\n' +
       '1ª via: Financeiro\n2ª via: Estoque\n3ª via: Controle da Oficina'
     )

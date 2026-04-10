@@ -59,31 +59,37 @@ def run_sqlite_migrations(engine) -> None:
             """))
 
         # Migração de fluxo legado:
-        # casos que estavam em "Aguardando Impressão Oficina" (sem assinatura de estoque)
-        # passam para "Aguardando Conferência Estoque" para conclusão obrigatória pelo gestor.
+        # remove etapa do gestor de estoque e retorna ao fluxo antigo
+        # (Diretoria -> Impressão Oficina -> Finalização).
         if _table_exists(conn, "casos_garantia") and _table_exists(conn, "assinaturas"):
             conn.execute(text("""
                 UPDATE casos_garantia
-                   SET status = 'Aguardando Conferência Estoque',
+                   SET status = 'Aguardando Impressão Oficina',
                        status_rebate = CASE
                          WHEN status_rebate IS NULL OR status_rebate IN ('', 'Não Aplicável')
                            THEN 'Aguardando Apuração'
                          ELSE status_rebate
                        END
-                 WHERE status = 'Aguardando Impressão Oficina'
+                 WHERE status = 'Aguardando Conferência Estoque'
                    AND EXISTS (
                         SELECT 1
-                          FROM assinaturas a_dir
-                         WHERE a_dir.case_id = casos_garantia.id
-                           AND a_dir.etapa_fluxo = 'Diretoria'
-                           AND a_dir.status_decisao = 'Aprovado'
+                          FROM assinaturas a_pos
+                         WHERE a_pos.case_id = casos_garantia.id
+                           AND a_pos.etapa_fluxo = 'Pos-venda'
+                           AND a_pos.status_decisao = 'Aprovado'
                    )
-                   AND NOT EXISTS (
-                        SELECT 1
-                          FROM assinaturas a_est
-                         WHERE a_est.case_id = casos_garantia.id
-                           AND a_est.etapa_fluxo = 'Estoque'
-                   )
+            """))
+
+        if _table_exists(conn, "casos_garantia"):
+            conn.execute(text("""
+                UPDATE casos_garantia
+                   SET status = 'Aguardando Impressão Oficina',
+                       status_rebate = CASE
+                         WHEN status_rebate IS NULL OR status_rebate IN ('', 'Não Aplicável')
+                           THEN 'Aguardando Apuração'
+                         ELSE status_rebate
+                       END
+                 WHERE status IN ('Aguardando Conferência Estoque', 'Aguardando Vídeo Descarte')
             """))
 
         if not _table_exists(conn, "notificacoes"):

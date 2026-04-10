@@ -53,12 +53,10 @@ STATUS_AGUARDANDO_ESTOQUE = "Aguardando Conferência Estoque"
 STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO = "Aguardando Vídeo Descarte"
 STATUS_ETAPA_ESTOQUE_COMPAT = {
     STATUS_AGUARDANDO_ESTOQUE,
-    STATUS_AGUARDANDO_IMPRESSAO,  # compatibilidade para casos legados
     STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO,  # legado de fluxo antigo de bateria
 }
 STATUS_BLOQUEIA_EDICAO = {
     "Aguardando Aprovação Diretoria",
-    STATUS_AGUARDANDO_ESTOQUE,
     STATUS_AGUARDANDO_IMPRESSAO,
     "Finalizado",
     "Reprovado",
@@ -71,10 +69,10 @@ STATUS_FLOW = {
     "Aguardando Documentos": 0,
     "Aguardando Aprovação Pós-Venda": 1,
     "Aguardando Aprovação Diretoria": 2,
-    STATUS_AGUARDANDO_ESTOQUE: 3,
-    STATUS_AGUARDANDO_IMPRESSAO: 4,
+    STATUS_AGUARDANDO_IMPRESSAO: 3,
     "Finalizado": 5,
     "Reprovado": 6,
+    STATUS_AGUARDANDO_ESTOQUE: 3,  # legado
     STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO: 3,  # legado
 }
 
@@ -216,11 +214,7 @@ def _check_foto_pedido_estoque(caso: models.CasoGarantia) -> bool:
 
 
 def _etapas_requeridas_para_dossie(caso: models.CasoGarantia) -> List[str]:
-    etapas = ["Pos-venda", "Diretoria"]
-    possui_assinatura_estoque = any(sig.etapa_fluxo == "Estoque" for sig in (caso.assinaturas or []))
-    if possui_assinatura_estoque:
-        etapas.append("Estoque")
-    return etapas
+    return ["Pos-venda", "Diretoria"]
 
 
 def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.Usuario) -> str:
@@ -238,20 +232,11 @@ def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.U
                 detail=f"Caso não está aguardando aprovação do diretor comercial. Status atual: {caso.status}"
             )
         return "Diretoria"
-    if current_user.papel == "gestor_estoque":
-        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Caso não está aguardando etapa do gestor de estoque. Status atual: {caso.status}"
-            )
-        return "Estoque"
     if current_user.papel == "admin":
         if caso.status == STATUS_AGUARDANDO_POS_VENDA:
             return "Pos-venda"
         if caso.status == STATUS_AGUARDANDO_DIRETORIA:
             return "Diretoria"
-        if caso.status in STATUS_ETAPA_ESTOQUE_COMPAT:
-            return "Estoque"
         raise HTTPException(status_code=400, detail=f"Caso não está aguardando aprovação. Status: {caso.status}")
     raise HTTPException(status_code=403, detail="Você não tem permissão para assinar este caso")
 
@@ -328,10 +313,10 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
     )
     if not caso:
         raise HTTPException(status_code=404, detail="Caso não encontrado")
-    if caso.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO:
-        # Migração automática de status legado para manter a esteira atual
-        # (Diretoria -> Gestor de Estoque -> conclusão).
-        caso.status = STATUS_AGUARDANDO_ESTOQUE
+    if caso.status in {STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO, STATUS_AGUARDANDO_ESTOQUE}:
+        # Migração automática de status legado para manter a esteira antiga:
+        # Diretoria -> Impressão oficina -> conclusão.
+        caso.status = STATUS_AGUARDANDO_IMPRESSAO
         caso.atualizado_em = datetime.utcnow()
         db.flush()
     return caso
@@ -340,10 +325,10 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
 def _migrar_status_legado_video_para_estoque(db: Session) -> None:
     atualizados = (
         db.query(models.CasoGarantia)
-        .filter(models.CasoGarantia.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO)
+        .filter(models.CasoGarantia.status.in_([STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO, STATUS_AGUARDANDO_ESTOQUE]))
         .update(
             {
-                models.CasoGarantia.status: STATUS_AGUARDANDO_ESTOQUE,
+                models.CasoGarantia.status: STATUS_AGUARDANDO_IMPRESSAO,
                 models.CasoGarantia.atualizado_em: datetime.utcnow(),
             },
             synchronize_session=False,
@@ -816,7 +801,7 @@ def listar_casos(
     cliente_id: Optional[int] = Query(None),
     criado_por_usuario_id: Optional[int] = Query(None),
     busca: Optional[str] = Query(None),
-    assinatura_etapa: Optional[str] = Query(None, pattern="^(Pos-venda|Diretoria|Estoque)$"),
+    assinatura_etapa: Optional[str] = Query(None, pattern="^(Pos-venda|Diretoria)$"),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
@@ -866,12 +851,10 @@ def dashboard_stats(
         models.CasoGarantia.status.in_([
             "Aguardando Aprovação Pós-Venda",
             "Aguardando Aprovação Diretoria",
-            STATUS_AGUARDANDO_ESTOQUE,
         ])
     ).count()
     finalizados = db.query(models.CasoGarantia).filter(
         models.CasoGarantia.status.in_([
-            STATUS_AGUARDANDO_ESTOQUE,
             STATUS_AGUARDANDO_IMPRESSAO,
             "Finalizado",
         ])
@@ -1202,7 +1185,8 @@ def deletar_caso(
 
 # ─── Documentos ───────────────────────────────────────────────────────────────
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp", ".mp4", ".mov", ".avi"}
+# Apenas formatos compiláveis para impressão do dossiê final.
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
@@ -1212,47 +1196,11 @@ async def upload_documento(
     tipo_documento: str = Form(...),
     arquivo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gestor_estoque"))
+    current_user: models.Usuario = Depends(require_roles("admin", "operador"))
 ):
     caso = _load_caso(caso_id, db)
-    categoria_upload = _categorizar_tipo_documento(tipo_documento)
-    upload_foto_estoque = categoria_upload == "categoria_foto_pedido_estoque"
-
-    # A foto dos pedidos é exclusiva da etapa do Gestor de Estoque
-    # (após assinatura da diretoria) e não faz parte dos anexos da oficina.
-    if upload_foto_estoque:
-        if current_user.papel not in {"gestor_estoque", "admin"}:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "A foto dos pedidos é exclusiva da sessão do Gestor de Estoque "
-                    "após a assinatura da Diretoria Comercial."
-                ),
-            )
-        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "A foto dos pedidos só pode ser anexada na etapa de conferência "
-                    "do Gestor de Estoque."
-                ),
-            )
-
-    permitido_estoque = (
-        caso.status in STATUS_ETAPA_ESTOQUE_COMPAT
-        and current_user.papel in {"gestor_estoque", "admin"}
-        and upload_foto_estoque
-    )
-    if caso.status in STATUS_BLOQUEIA_EDICAO and not permitido_estoque:
+    if caso.status in STATUS_BLOQUEIA_EDICAO:
         raise HTTPException(status_code=400, detail="Caso em etapa final. Não é possível adicionar documentos.")
-    if current_user.papel == "gestor_estoque":
-        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
-            raise HTTPException(status_code=400, detail="O Gestor de Estoque só pode anexar documentos na etapa de estoque.")
-        if not upload_foto_estoque:
-            raise HTTPException(
-                status_code=400,
-                detail="Nesta etapa o Gestor de Estoque só pode anexar a foto dos pedidos direcionados.",
-            )
     status_anterior = caso.status
 
     content = await arquivo.read()
@@ -1260,16 +1208,7 @@ async def upload_documento(
         raise HTTPException(status_code=400, detail="Arquivo muito grande. Máximo: 50MB")
 
     ext = Path(arquivo.filename).suffix.lower()
-    if upload_foto_estoque:
-        if not _arquivo_parece_imagem(arquivo.filename, arquivo.content_type, content):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "O anexo da sessão do Gestor de Estoque deve ser uma foto/imagem válida. "
-                    "Envie um arquivo de imagem."
-                ),
-            )
-    elif ext not in ALLOWED_EXTENSIONS:
+    if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Extensão não permitida: {ext}")
 
     # Criar diretório do caso
@@ -1684,7 +1623,7 @@ def deletar_documento(
     caso_id: int,
     doc_id: int,
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(require_roles("admin", "operador", "gestor_estoque"))
+    current_user: models.Usuario = Depends(require_roles("admin", "operador"))
 ):
     caso = _load_caso(caso_id, db)
     doc = db.query(models.Documento).filter(
@@ -1693,25 +1632,8 @@ def deletar_documento(
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
-    if _documento_foto_pedido_estoque(doc):
-        if current_user.papel not in {"gestor_estoque", "admin"}:
-            raise HTTPException(
-                status_code=400,
-                detail="Somente o Gestor de Estoque pode remover a foto dos pedidos nesta etapa.",
-            )
-        if caso.status not in STATUS_ETAPA_ESTOQUE_COMPAT:
-            raise HTTPException(
-                status_code=400,
-                detail="A foto dos pedidos só pode ser gerenciada durante a etapa do Gestor de Estoque.",
-            )
     if caso.status in STATUS_BLOQUEIA_EDICAO:
-        permitido_estoque = (
-            caso.status in STATUS_ETAPA_ESTOQUE_COMPAT
-            and current_user.papel in {"gestor_estoque", "admin"}
-            and _documento_foto_pedido_estoque(doc)
-        )
-        if not permitido_estoque:
-            raise HTTPException(status_code=400, detail="Caso em etapa final.")
+        raise HTTPException(status_code=400, detail="Caso em etapa final.")
     status_anterior = caso.status
 
     assinaturas_removidas = _remover_assinaturas_documento(doc.id, db)
@@ -1828,42 +1750,16 @@ def assinar_caso(
             ["Pos-venda", "Diretoria"],
             "aprovação final da diretoria",
         )
-        caso_db.status = STATUS_AGUARDANDO_ESTOQUE
+        caso_db.status = STATUS_AGUARDANDO_IMPRESSAO
         caso_db.status_rebate = "Aguardando Apuração"
         _notificar_papel(
             db,
-            papel="gestor_estoque",
-            tipo="pendencia_assinatura_estoque",
-            titulo="Assinatura pendente: Gestor de Estoque",
+            papel="operador",
+            tipo="pronto_impressao_finalizacao",
+            titulo="Pronto para impressão e finalização",
             mensagem=(
                 f"{codigo} recebeu as assinaturas de Pós-venda e Diretoria Comercial. "
-                "Aguardando conferência do Gestor de Estoque com anexo da foto dos pedidos e assinatura final."
-            ),
-            case_id=caso_id,
-        )
-    elif etapa == "Estoque":
-        _validar_documentos_assinados_por_etapas(
-            caso,
-            ["Pos-venda", "Diretoria", "Estoque"],
-            "conclusão do gestor de estoque",
-        )
-        if not _check_foto_pedido_estoque(caso):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Fluxo bloqueado para conclusão. "
-                    "Anexe a foto dos pedidos direcionados pelo estoque antes de confirmar."
-                ),
-            )
-        caso_db.status = "Finalizado"
-        caso_db.status_rebate = "Finalizado"
-        _notificar_papel(
-            db,
-            papel="operador",
-            tipo="caso_finalizado_estoque",
-            titulo="Caso concluído pelo Gestor de Estoque",
-            mensagem=(
-                f"{codigo} foi concluído pelo Gestor de Estoque com foto dos pedidos e assinatura final."
+                "Aguardando impressão em 3 vias e finalização pela oficina."
             ),
             case_id=caso_id,
         )
@@ -1921,9 +1817,9 @@ def assinar_caso(
 
     db.commit()
 
-    # Compilar PDF após etapas-chave do fluxo (diretoria, estoque e finalização).
+    # Compilar PDF após etapas-chave do fluxo (diretoria e finalização).
     caso_final = _load_caso(caso_id, db)
-    if caso_final.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
+    if caso_final.status in {STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
         try:
             _compilar_pdf(caso_final, db)
         except RuntimeError as exc:
@@ -1952,17 +1848,9 @@ def confirmar_impressao_oficina(
 
     _validar_documentos_assinados_por_etapas(
         caso,
-        ["Pos-venda", "Diretoria", "Estoque"],
+        ["Pos-venda", "Diretoria"],
         "impressão e finalização",
     )
-    if not _check_foto_pedido_estoque(caso):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Fluxo bloqueado para finalização. "
-                "Anexe a foto dos pedidos direcionados pelo estoque antes da impressão final."
-            ),
-        )
 
     try:
         pdf_path = _compilar_pdf(caso, db)

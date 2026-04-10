@@ -81,7 +81,8 @@ const DOCS_FLUXO_OFICINA = [
 ]
 const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
 const STATUS_AGUARDANDO_IMPRESSAO = 'Aguardando Impressão Oficina'
-const STATUS_ETAPA_ESTOQUE_COMPAT = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO]
+const FLUXO_ESTOQUE_ATIVO = false
+const STATUS_ETAPA_ESTOQUE_COMPAT = FLUXO_ESTOQUE_ATIVO ? [STATUS_AGUARDANDO_ESTOQUE] : []
 const TIPO_DOCUMENTO_FOTO_ESTOQUE = 'Foto dos Pedidos - Estoque'
 const PAPEL_LABEL = {
   operador: 'Time Oficina',
@@ -437,6 +438,7 @@ export default function CasoDetail() {
   const handleConfirmarImpressao = async () => {
     const iniciar = window.confirm(
       'Abrir impressão em 3 vias deste caso?\n\n' +
+      'O dossiê vai incluir todos os documentos anexados e assinados.\n\n' +
       '1ª via: Financeiro\n2ª via: Estoque\n3ª via: Controle da Oficina'
     )
     if (!iniciar) return
@@ -544,7 +546,7 @@ export default function CasoDetail() {
   }
 
   const autoSignRequested = searchParams.get('assinar') === '1'
-  const autoFotoUploadRequested = searchParams.get('foto_estoque') === '1'
+  const autoFotoUploadRequested = FLUXO_ESTOQUE_ATIVO && searchParams.get('foto_estoque') === '1'
   const canSign = caso ? podeAssinar(caso) : false
   const etapaAssinaturaAtual = caso?.status === 'Aguardando Aprovação Pós-Venda'
     ? 'Pos-venda'
@@ -658,7 +660,7 @@ export default function CasoDetail() {
     const aliasesNorm = aliases.map((alias) => normalizeText(alias))
     return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
   }
-  const usuarioEhGestorEstoque = user?.papel === 'gestor_estoque'
+  const usuarioEhGestorEstoque = FLUXO_ESTOQUE_ATIVO && user?.papel === 'gestor_estoque'
   const isFinalOrReprovado = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
   const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
   const canManageOfficeDocs = (isOperador || isAdmin) && !isLockedForOfficeEdition
@@ -686,12 +688,10 @@ export default function CasoDetail() {
     const lista = assinaturasPorDocumento[docId] || []
     const assinadoPos = lista.some((sig) => sig.etapa_fluxo === 'Pos-venda')
     const assinadoDir = lista.some((sig) => sig.etapa_fluxo === 'Diretoria')
-    const assinadoEstoque = lista.some((sig) => sig.etapa_fluxo === 'Estoque')
     return {
       assinadoPos,
       assinadoDir,
-      assinadoEstoque,
-      texto: `Assinaturas: Pós-venda ${assinadoPos ? '✓' : 'pendente'} · Diretor ${assinadoDir ? '✓' : 'pendente'} · Estoque ${assinadoEstoque ? '✓' : 'pendente'}`,
+      texto: `Assinaturas: Pós-venda ${assinadoPos ? '✓' : 'pendente'} · Diretor ${assinadoDir ? '✓' : 'pendente'}`,
     }
   }
 
@@ -701,15 +701,13 @@ export default function CasoDetail() {
     ? (etapaAssinaturaAtual === 'Pos-venda'
       ? 'Assinar e Encaminhar ao Diretor Comercial'
       : etapaAssinaturaAtual === 'Diretoria'
-        ? 'Assinar e Encaminhar ao Gestor de Estoque'
+        ? 'Assinar e Encaminhar para Impressão da Oficina'
         : 'Assinar e Concluir Caso')
     : 'Reprovar Caso'
-  const assinaturaEstoqueRegistrada = (caso.assinaturas || []).some((sig) => sig.etapa_fluxo === 'Estoque')
   const pipelineSteps = [
     { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
-    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
-    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
-    { label: 'Gestor de Estoque', key: 'estoque', done: assinaturaEstoqueRegistrada || caso.status === 'Finalizado' },
+    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
+    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
     { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
   ]
 
@@ -869,13 +867,13 @@ export default function CasoDetail() {
             Somente Time Oficina pode anexar, substituir ou remover documentos nesta etapa.
           </div>
         )}
-        {usuarioEhGestorEstoque && !STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status) && (
+        {FLUXO_ESTOQUE_ATIVO && usuarioEhGestorEstoque && !STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status) && (
           <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
             A área de anexo da foto dos pedidos do estoque fica disponível quando o caso estiver em{' '}
             <strong>{STATUS_AGUARDANDO_ESTOQUE}</strong>.
           </div>
         )}
-        {!usuarioEhGestorEstoque && (
+        {FLUXO_ESTOQUE_ATIVO && !usuarioEhGestorEstoque && (
           <div style={{ marginBottom: 12, fontSize: 12, color: '#92400e', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px' }}>
             A foto dos pedidos não pertence ao anexo da oficina. Esse anexo é exclusivo da etapa final do Gestor de Estoque,
             liberada somente após a assinatura do Diretor Comercial.
@@ -942,76 +940,79 @@ export default function CasoDetail() {
             )
           })}
 
-          <div style={s.estoqueSectionTitle}>
-            Etapa Gestor de Estoque (após assinatura da Diretoria)
-          </div>
+          {FLUXO_ESTOQUE_ATIVO && (
+            <>
+              <div style={s.estoqueSectionTitle}>
+                Etapa Gestor de Estoque (após assinatura da Diretoria)
+              </div>
 
-          <div
-            ref={fotoEstoqueRowRef}
-            style={{
-              ...s.docRow,
-              border: '1.5px dashed #fdba74',
-              background: '#fff7ed',
-              ...(destacarFotoEstoque ? { boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.25)' } : {}),
-            }}
-          >
-            <div style={s.docIcon}>{fotoEstoqueAtual ? '📸' : '📦'}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>
-                Foto dos pedidos direcionados pelo estoque (Exclusivo Gestor de Estoque)
-              </div>
-              {fotoEstoqueAtual ? (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {fotoEstoqueAtual.nome_arquivo}
-                  {fotoEstoqueAtual.tamanho_bytes ? ` · ${(fotoEstoqueAtual.tamanho_bytes / 1024).toFixed(0)} KB` : ''}
-                  {' · '}
-                  {new Date(fotoEstoqueAtual.data_upload).toLocaleDateString('pt-BR')}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Nenhuma foto anexada para a etapa do estoque.
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: '#9a3412', marginTop: 3 }}>
-                Este anexo é obrigatório para concluir a assinatura final do Gestor de Estoque.
-                Aceita foto com qualquer extensão, desde que o conteúdo seja uma imagem válida.
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, ...(isMobile ? s.docActionsMobile : {}) }}>
-              {fotoEstoqueAtual && (
-                <button
-                  type="button"
-                  onClick={() => handleAbrirDocumento(fotoEstoqueAtual)}
-                  disabled={!!downloadingDocs[fotoEstoqueAtual.id]}
-                  style={{ ...s.docDownBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}
-                >
-                  {downloadingDocs[fotoEstoqueAtual.id] ? 'Abrindo...' : 'Abrir'}
-                </button>
-              )}
-              {podeAnexarFotoEstoque && (
-                <>
-                  <label style={{ ...s.docUpBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}>
-                    {uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE] ? '...' : fotoEstoqueAtual ? '🔄 Substituir' : '⬆ Enviar'}
-                    <input
-                      type="file"
-                      style={{ display: 'none' }}
-                      ref={el => fileRefs.current[TIPO_DOCUMENTO_FOTO_ESTOQUE] = el}
-                      onChange={e => handleUpload(TIPO_DOCUMENTO_FOTO_ESTOQUE, e.target.files[0])}
-                      disabled={!!uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE]}
-                    />
-                  </label>
-                  {fotoEstoqueAtual && (
-                    <button onClick={() => handleDeleteDoc(fotoEstoqueAtual.id, fotoEstoqueAtual.nome_arquivo)} style={{ ...s.docDelBtn, ...(isMobile ? s.mobileDocDeleteBtn : {}) }}>🗑</button>
+              <div
+                ref={fotoEstoqueRowRef}
+                style={{
+                  ...s.docRow,
+                  border: '1.5px dashed #fdba74',
+                  background: '#fff7ed',
+                  ...(destacarFotoEstoque ? { boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.25)' } : {}),
+                }}
+              >
+                <div style={s.docIcon}>{fotoEstoqueAtual ? '📸' : '📦'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>
+                    Foto dos pedidos direcionados pelo estoque (Exclusivo Gestor de Estoque)
+                  </div>
+                  {fotoEstoqueAtual ? (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {fotoEstoqueAtual.nome_arquivo}
+                      {fotoEstoqueAtual.tamanho_bytes ? ` · ${(fotoEstoqueAtual.tamanho_bytes / 1024).toFixed(0)} KB` : ''}
+                      {' · '}
+                      {new Date(fotoEstoqueAtual.data_upload).toLocaleDateString('pt-BR')}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Nenhuma foto anexada para a etapa do estoque.
+                    </div>
                   )}
-                </>
-              )}
-            </div>
-          </div>
+                  <div style={{ fontSize: 11, color: '#9a3412', marginTop: 3 }}>
+                    Este anexo é obrigatório para concluir a assinatura final do Gestor de Estoque.
+                    Aceita foto com qualquer extensão, desde que o conteúdo seja uma imagem válida.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, ...(isMobile ? s.docActionsMobile : {}) }}>
+                  {fotoEstoqueAtual && (
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirDocumento(fotoEstoqueAtual)}
+                      disabled={!!downloadingDocs[fotoEstoqueAtual.id]}
+                      style={{ ...s.docDownBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}
+                    >
+                      {downloadingDocs[fotoEstoqueAtual.id] ? 'Abrindo...' : 'Abrir'}
+                    </button>
+                  )}
+                  {podeAnexarFotoEstoque && (
+                    <>
+                      <label style={{ ...s.docUpBtn, ...(isMobile ? s.mobileDocActionBtn : {}) }}>
+                        {uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE] ? '...' : fotoEstoqueAtual ? '🔄 Substituir' : '⬆ Enviar'}
+                        <input
+                          type="file"
+                          style={{ display: 'none' }}
+                          ref={el => fileRefs.current[TIPO_DOCUMENTO_FOTO_ESTOQUE] = el}
+                          onChange={e => handleUpload(TIPO_DOCUMENTO_FOTO_ESTOQUE, e.target.files[0])}
+                          disabled={!!uploading[TIPO_DOCUMENTO_FOTO_ESTOQUE]}
+                        />
+                      </label>
+                      {fotoEstoqueAtual && (
+                        <button onClick={() => handleDeleteDoc(fotoEstoqueAtual.id, fotoEstoqueAtual.nome_arquivo)} style={{ ...s.docDelBtn, ...(isMobile ? s.mobileDocDeleteBtn : {}) }}>🗑</button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Outros documentos (não obrigatórios) */}
           {(caso.documentos || [])
             .filter(d => !docsObrigatoriosAliasesNorm.includes(normalizeText(d.tipo_documento)))
-            .filter(d => categorizarTipoDocumento(d.tipo_documento) !== 'categoria_foto_pedido_estoque')
             .map((doc) => {
               const assinaturaResumo = resumoAssinaturasDocumento(doc)
               return (

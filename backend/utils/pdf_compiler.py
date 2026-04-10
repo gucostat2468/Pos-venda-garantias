@@ -234,34 +234,52 @@ def compile_pdf(caso_data: dict, document_paths: List[dict], output_path: str) -
     for page in cover_reader.pages:
         writer.add_page(page)
 
-    # 2. Cada documento
+    # 2. Cada documento (todos os anexos precisam ser compiláveis para impressão)
     for doc_info in document_paths:
         path = doc_info.get("path_arquivo")
         pdf_bytes = doc_info.get("pdf_bytes")
+        nome_arquivo = doc_info.get("nome_arquivo") or os.path.basename(path or "") or "arquivo"
 
-        try:
-            if pdf_bytes:
+        if pdf_bytes:
+            try:
                 reader = PdfReader(io.BytesIO(pdf_bytes))
                 for page in reader.pages:
                     writer.add_page(page)
                 continue
+            except Exception as e:
+                raise RuntimeError(
+                    f"Falha ao processar PDF assinado do anexo '{nome_arquivo}': {e}"
+                ) from e
 
-            if not path or not os.path.exists(path):
-                continue
+        if not path or not os.path.exists(path):
+            raise RuntimeError(
+                f"Anexo '{nome_arquivo}' não foi encontrado no armazenamento para impressão."
+            )
 
-            ext = Path(path).suffix.lower()
-            if ext == ".pdf":
+        ext = Path(path).suffix.lower()
+        if ext == ".pdf":
+            try:
                 reader = PdfReader(path)
                 for page in reader.pages:
                     writer.add_page(page)
-            elif ext in (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"):
+            except Exception as e:
+                raise RuntimeError(
+                    f"Falha ao processar o anexo PDF '{nome_arquivo}': {e}"
+                ) from e
+        elif ext in (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"):
+            try:
                 img_pdf_bytes = image_to_pdf_bytes(path)
                 img_reader = PdfReader(io.BytesIO(img_pdf_bytes))
                 for page in img_reader.pages:
                     writer.add_page(page)
-        except Exception as e:
-            print(f"Erro ao processar documento {path}: {e}")
-            continue
+            except Exception as e:
+                raise RuntimeError(
+                    f"Falha ao converter imagem '{nome_arquivo}' para PDF: {e}"
+                ) from e
+        else:
+            raise RuntimeError(
+                f"Anexo '{nome_arquivo}' possui extensão '{ext or 'desconhecida'}' e não pode ser impresso no dossiê."
+            )
 
     # Salvar PDF compilado
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

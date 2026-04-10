@@ -10,7 +10,6 @@ const STATUS_OPTIONS = [
   'Aguardando Documentos',
   'Aguardando Aprovação Pós-Venda',
   'Aguardando Aprovação Diretoria',
-  'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
   'Finalizado',
   'Reprovado',
@@ -19,7 +18,6 @@ const STATUS_OPTIONS = [
 const FILA_PARAM_TO_STATUS = {
   pos_venda: 'Aguardando Aprovação Pós-Venda',
   diretoria: 'Aguardando Aprovação Diretoria',
-  estoque: 'Aguardando Conferência Estoque',
   impressao: 'Aguardando Impressão Oficina',
 }
 
@@ -58,7 +56,6 @@ const FILA_ASSINATURA_CONFIG = {
     historicoHint: 'Casos já assinados na etapa de Pós-venda e que seguiram no fluxo.',
     historicoStatus: new Set([
       'Aguardando Aprovação Diretoria',
-      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
@@ -74,30 +71,13 @@ const FILA_ASSINATURA_CONFIG = {
     historicoTitulo: 'Histórico de Assinados',
     historicoHint: 'Casos já assinados na etapa de Diretoria e que seguiram no fluxo.',
     historicoStatus: new Set([
-      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
     ]),
     acaoPendencia: 'Assinar Agora',
   },
-  'Aguardando Conferência Estoque': {
-    etapaApi: 'Estoque',
-    titulo: 'Sessão Gestor de Estoque',
-    subtitulo: 'Esteira exclusiva do estoque com pendências de assinatura e histórico de conclusões',
-    pendentesTitulo: 'Pendentes da Conferência de Estoque',
-    pendentesHint: 'Casos aguardando assinatura final do gestor de estoque.',
-    historicoTitulo: 'Histórico da Sessão de Estoque',
-    historicoHint: 'Casos já assinados pelo gestor de estoque e movidos para concluído.',
-    historicoStatus: new Set([
-      'Finalizado',
-      'Reprovado',
-    ]),
-    acaoPendencia: 'Conferir e Concluir',
-  },
 }
-const STATUS_LEGADO_IMPRESSAO = 'Aguardando Impressão Oficina'
-const STATUS_ETAPA_ESTOQUE_COMPAT = new Set(['Aguardando Conferência Estoque', STATUS_LEGADO_IMPRESSAO])
 const FILTRO_SOLICITANTE_INDEFINIDO = '__nao_identificado__'
 const PAPEL_LABEL = {
   operador: 'Time Oficina',
@@ -152,7 +132,6 @@ const mesmaListaCasos = (atual, proxima) => {
 export default function CasosList() {
   const isMobile = useMediaQuery('(max-width: 760px)')
   const { user, podeAssinar } = useAuth()
-  const isGestorEstoque = user?.papel === 'gestor_estoque' || user?.papel === 'admin'
   const [searchParams, setSearchParams] = useSearchParams()
   const searchParamsKey = searchParams.toString()
   const [casos, setCasos] = useState([])
@@ -219,16 +198,6 @@ export default function CasosList() {
 
   const fetchCasos = useCallback(async ({ silent = false } = {}) => {
     if (silent) memorizarScrollAtual()
-    const acessoFilaEstoqueBloqueado =
-      filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
-    if (acessoFilaEstoqueBloqueado) {
-      setCasos((prev) => (prev.length === 0 ? prev : []))
-      setHistoricoAssinados((prev) => (prev.length === 0 ? prev : []))
-      if (!silent) setErroLista('')
-      if (!silent) setLoading(false)
-      if (silent) restaurarScrollSeSaltou()
-      return
-    }
     if (!silent) setLoading(true)
     if (!silent) setErroLista('')
     try {
@@ -247,22 +216,16 @@ export default function CasosList() {
       }
 
       if (filaConfig) {
-        const isFilaEstoque = filtroStatus === 'Aguardando Conferência Estoque'
-        const [pendRes, pendResLegado, histRes] = await Promise.all([
+        const [pendRes, histRes] = await Promise.all([
           casosAPI.listar({ ...baseParams, status: filtroStatus }),
-          isFilaEstoque
-            ? casosAPI.listar({ ...baseParams, status: STATUS_LEGADO_IMPRESSAO })
-            : Promise.resolve({ data: [] }),
           casosAPI.listar({ ...baseParams, assinatura_etapa: filaConfig.etapaApi }),
         ])
 
         const pendDataBase = Array.isArray(pendRes.data) ? pendRes.data : []
-        const pendDataLegado = Array.isArray(pendResLegado.data) ? pendResLegado.data : []
         const histData = Array.isArray(histRes.data) ? histRes.data : []
         const pendMap = new Map()
-        const pendDataMerge = [...pendDataBase, ...pendDataLegado]
+        const pendDataMerge = [...pendDataBase]
         pendDataMerge
-          .filter((caso) => !isFilaEstoque || STATUS_ETAPA_ESTOQUE_COMPAT.has(caso.status))
           .forEach((caso) => pendMap.set(caso.id, caso))
         const pendData = filtrarSolicitanteNaoIdentificado([...pendMap.values()])
         const histDataFiltrado = filtrarSolicitanteNaoIdentificado(histData)
@@ -310,7 +273,6 @@ export default function CasosList() {
     filtroSolicitante,
     busca,
     filaConfig,
-    isGestorEstoque,
     memorizarScrollAtual,
     restaurarScrollSeSaltou,
   ])
@@ -380,9 +342,6 @@ export default function CasosList() {
   }
 
   const totalEncontrados = filaConfig ? casos.length + historicoAssinados.length : casos.length
-  const acessoFilaEstoqueBloqueado =
-    filtroStatus === 'Aguardando Conferência Estoque' && !isGestorEstoque
-  const filaEstoqueAtiva = filtroStatus === 'Aguardando Conferência Estoque'
 
   return (
     <div>
@@ -441,13 +400,7 @@ export default function CasosList() {
         </div>
       )}
 
-      {acessoFilaEstoqueBloqueado && (
-        <div style={{ ...s.tableCard, marginBottom: 12, color: '#9a3412', background: '#fff7ed', borderColor: '#fdba74' }}>
-          Esta sessão é exclusiva do Gestor de Estoque.
-        </div>
-      )}
-
-      {filaConfig && !acessoFilaEstoqueBloqueado ? (
+      {filaConfig ? (
         <>
           <div style={{ ...s.queueKpis, ...(isMobile ? s.queueKpisMobile : {}) }}>
             <div style={s.queueKpiCard}>
@@ -466,25 +419,6 @@ export default function CasosList() {
               <span style={s.sectionCount}>{casos.length}</span>
             </div>
             <p style={s.sectionHint}>{filaConfig.pendentesHint}</p>
-            {filaEstoqueAtiva && (
-              <div style={s.photoShortcutWrap}>
-                {casos.length > 0 ? (
-                  <Link to={`/casos/${casos[0].id}?foto_estoque=1`} style={s.photoShortcutBtn}>
-                    📸 Anexar Foto do Estoque (Atalho)
-                  </Link>
-                ) : (
-                  <>
-                    <button type="button" disabled style={{ ...s.photoShortcutBtn, ...s.photoShortcutBtnDisabled }}>
-                      📸 Anexar Foto do Estoque (Atalho)
-                    </button>
-                    <div style={s.photoShortcutHint}>
-                      Sem pendências no momento. Quando entrar um caso nesta fila, use este atalho para abrir direto na área de anexo.
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
             {loading ? (
               <div style={s.loading}>Carregando pendências...</div>
             ) : casos.length === 0 ? (
@@ -509,9 +443,6 @@ export default function CasosList() {
                     <div style={s.mobileLine}><span style={s.mobileLabel}>Entrada:</span><span>{new Date(`${caso.data_entrada}T00:00:00`).toLocaleDateString('pt-BR')}</span></div>
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
-                      {filaEstoqueAtiva && (
-                        <Link to={`/casos/${caso.id}?foto_estoque=1`} style={s.mobilePhotoBtn}>📸</Link>
-                      )}
                       {podeAssinar(caso) && (
                         <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
                       )}
@@ -561,9 +492,6 @@ export default function CasosList() {
                         <td style={s.td}>
                           <div style={s.actionRow}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
-                            {filaEstoqueAtiva && (
-                              <Link to={`/casos/${caso.id}?foto_estoque=1`} style={s.photoBtn}>📸 Anexar Foto</Link>
-                            )}
                             {podeAssinar(caso) && (
                               <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ {filaConfig.acaoPendencia}</Link>
                             )}

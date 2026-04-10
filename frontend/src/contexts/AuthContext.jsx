@@ -44,15 +44,10 @@ export function AuthProvider({ children }) {
 
   const podeAssinar = (caso) => {
     if (!user || !caso) return false
-    const statusEtapaEstoque = [
-      'Aguardando Conferência Estoque',
-      'Aguardando Impressão Oficina',
-    ]
     if (user.papel === 'admin') {
       return [
         'Aguardando Aprovação Pós-Venda',
         'Aguardando Aprovação Diretoria',
-        ...statusEtapaEstoque,
       ].includes(caso.status)
     }
     if (user.papel === 'gerente_pos_venda') {
@@ -61,9 +56,7 @@ export function AuthProvider({ children }) {
     if (user.papel === 'diretor_comercial') {
       return caso.status === 'Aguardando Aprovação Diretoria'
     }
-    if (user.papel === 'gestor_estoque') {
-      return statusEtapaEstoque.includes(caso.status)
-    }
+    if (user.papel === 'gestor_estoque') return false
     return false
   }
 
