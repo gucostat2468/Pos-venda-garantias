@@ -375,6 +375,14 @@ export default function CasosList() {
   }
 
   const totalEncontrados = filaConfig ? casos.length + historicoAssinados.length : casos.length
+  const filaAtualEhEstoque = filaConfig?.etapaApi === 'Estoque'
+  const resolverLinkAssinatura = useCallback((caso) => {
+    if (!caso?.id) return '/casos'
+    if (caso.status === 'Aguardando Conferência Estoque') {
+      return `/casos/${caso.id}?foto_estoque=1`
+    }
+    return `/casos/${caso.id}?assinar=1`
+  }, [])
 
   return (
     <div>
@@ -454,6 +462,11 @@ export default function CasosList() {
               <span style={s.sectionCount}>{casos.length}</span>
             </div>
             <p style={s.sectionHint}>{filaConfig.pendentesHint}</p>
+            {filaAtualEhEstoque && (
+              <p style={s.photoShortcutHint}>
+                Antes da assinatura de conclusão, anexe a foto dos pedidos do estoque no detalhe do caso.
+              </p>
+            )}
             {loading ? (
               <div style={s.loading}>Carregando pendências...</div>
             ) : casos.length === 0 ? (
@@ -479,7 +492,13 @@ export default function CasosList() {
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Ver caso</Link>
                       {podeAssinar(caso) && (
-                        <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
+                        <Link
+                          to={resolverLinkAssinatura(caso)}
+                          style={filaAtualEhEstoque ? s.mobilePhotoBtn : s.mobileSignBtn}
+                          title={filaAtualEhEstoque ? 'Anexar foto do estoque antes de assinar' : 'Assinar etapa'}
+                        >
+                          {filaAtualEhEstoque ? '📸' : '✍️'}
+                        </Link>
                       )}
                       {canDeleteSpecificCase(caso) && (
                         <button
@@ -528,7 +547,13 @@ export default function CasosList() {
                           <div style={s.actionRow}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver caso</Link>
                             {podeAssinar(caso) && (
-                              <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ {filaConfig.acaoPendencia}</Link>
+                              <Link
+                                to={resolverLinkAssinatura(caso)}
+                                style={filaAtualEhEstoque ? s.photoBtn : s.signBtn}
+                                title={filaAtualEhEstoque ? 'Anexar foto do estoque antes de assinar' : 'Assinar etapa'}
+                              >
+                                {filaAtualEhEstoque ? '📸 Anexar Foto' : `✍️ ${filaConfig.acaoPendencia}`}
+                              </Link>
                             )}
                             {canDeleteSpecificCase(caso) && (
                               <button
@@ -700,7 +725,13 @@ export default function CasosList() {
                     <div style={s.mobileActionRow}>
                       <Link to={`/casos/${caso.id}`} style={s.mobileAction}>Abrir caso</Link>
                       {podeAssinar(caso) && (
-                        <Link to={`/casos/${caso.id}?assinar=1`} style={s.mobileSignBtn}>✍️</Link>
+                        <Link
+                          to={resolverLinkAssinatura(caso)}
+                          style={caso.status === 'Aguardando Conferência Estoque' ? s.mobilePhotoBtn : s.mobileSignBtn}
+                          title={caso.status === 'Aguardando Conferência Estoque' ? 'Anexar foto do estoque antes de assinar' : 'Assinar etapa'}
+                        >
+                          {caso.status === 'Aguardando Conferência Estoque' ? '📸' : '✍️'}
+                        </Link>
                       )}
                       {canDeleteSpecificCase(caso) && (
                         <button
@@ -761,7 +792,13 @@ export default function CasosList() {
                           <div style={s.actionRow}>
                             <Link to={`/casos/${caso.id}`} style={s.viewBtn}>Ver →</Link>
                             {podeAssinar(caso) && (
-                              <Link to={`/casos/${caso.id}?assinar=1`} style={s.signBtn}>✍️ Assinar</Link>
+                              <Link
+                                to={resolverLinkAssinatura(caso)}
+                                style={caso.status === 'Aguardando Conferência Estoque' ? s.photoBtn : s.signBtn}
+                                title={caso.status === 'Aguardando Conferência Estoque' ? 'Anexar foto do estoque antes de assinar' : 'Assinar etapa'}
+                              >
+                                {caso.status === 'Aguardando Conferência Estoque' ? '📸 Anexar Foto' : '✍️ Assinar'}
+                              </Link>
                             )}
                             {canDeleteSpecificCase(caso) && (
                               <button

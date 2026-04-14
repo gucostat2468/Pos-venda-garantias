@@ -533,7 +533,18 @@ export default function CasoDetail() {
     }
   }
 
+  const focarSecaoFotoEstoque = () => {
+    const target = fotoEstoqueRowRef.current
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   const abrirModalAssinatura = () => {
+    if (etapaAssinaturaAtual === 'Estoque' && !fotoEstoqueAtual) {
+      focarSecaoFotoEstoque()
+      alert('Antes da assinatura de conclusão, anexe a foto dos pedidos do estoque.')
+      return
+    }
     setAssinaDecisao('Aprovado')
     setAssinaObs('')
     setAssinaturaDocStep(0)
@@ -670,6 +681,7 @@ export default function CasoDetail() {
     (doc) => categorizarTipoDocumento(doc.tipo_documento) === 'categoria_foto_pedido_estoque'
   )
   const fotoEstoqueAtual = documentosFotoEstoque[0] || null
+  const bloqueioAssinaturaEstoqueSemFoto = etapaAssinaturaAtual === 'Estoque' && !fotoEstoqueAtual
   const podeAnexarFotoEstoque = isGestorEstoque && STATUS_ETAPA_ESTOQUE_COMPAT.includes(caso.status)
   const destacarFotoEstoque = autoFotoUploadRequested
   const assinaturasPorDocumento = (caso.documento_assinaturas || []).reduce((acc, sig) => {
@@ -1145,6 +1157,11 @@ export default function CasoDetail() {
             <p style={{ fontSize: 13, color: '#1e40af', marginBottom: 12, fontWeight: 600 }}>
               ✍️ Este caso aguarda sua assinatura ({caso.status})
             </p>
+            {bloqueioAssinaturaEstoqueSemFoto && (
+              <p style={{ fontSize: 12, color: '#9a3412', marginBottom: 10, fontWeight: 600 }}>
+                📸 Anexe a foto do estoque para liberar a assinatura final.
+              </p>
+            )}
             <button onClick={abrirModalAssinatura} style={{ ...s.signBtn, ...(isMobile ? s.headerActionBtnMobile : {}) }}>Assinar Agora</button>
           </div>
         )}
