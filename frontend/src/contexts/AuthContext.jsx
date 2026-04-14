@@ -48,6 +48,7 @@ export function AuthProvider({ children }) {
       return [
         'Aguardando Aprovação Pós-Venda',
         'Aguardando Aprovação Diretoria',
+        'Aguardando Conferência Estoque',
       ].includes(caso.status)
     }
     if (user.papel === 'gerente_pos_venda') {
@@ -56,7 +57,9 @@ export function AuthProvider({ children }) {
     if (user.papel === 'diretor_comercial') {
       return caso.status === 'Aguardando Aprovação Diretoria'
     }
-    if (user.papel === 'gestor_estoque') return false
+    if (user.papel === 'gestor_estoque') {
+      return caso.status === 'Aguardando Conferência Estoque'
+    }
     return false
   }
 

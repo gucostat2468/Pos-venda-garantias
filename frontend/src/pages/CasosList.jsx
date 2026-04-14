@@ -10,6 +10,7 @@ const STATUS_OPTIONS = [
   'Aguardando Documentos',
   'Aguardando Aprovação Pós-Venda',
   'Aguardando Aprovação Diretoria',
+  'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
   'Finalizado',
   'Reprovado',
@@ -18,6 +19,7 @@ const STATUS_OPTIONS = [
 const FILA_PARAM_TO_STATUS = {
   pos_venda: 'Aguardando Aprovação Pós-Venda',
   diretoria: 'Aguardando Aprovação Diretoria',
+  estoque: 'Aguardando Conferência Estoque',
   impressao: 'Aguardando Impressão Oficina',
 }
 
@@ -56,6 +58,7 @@ const FILA_ASSINATURA_CONFIG = {
     historicoHint: 'Casos já assinados na etapa de Pós-venda e que seguiram no fluxo.',
     historicoStatus: new Set([
       'Aguardando Aprovação Diretoria',
+      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
@@ -71,11 +74,26 @@ const FILA_ASSINATURA_CONFIG = {
     historicoTitulo: 'Histórico de Assinados',
     historicoHint: 'Casos já assinados na etapa de Diretoria e que seguiram no fluxo.',
     historicoStatus: new Set([
+      'Aguardando Conferência Estoque',
       'Aguardando Impressão Oficina',
       'Finalizado',
       'Reprovado',
     ]),
     acaoPendencia: 'Assinar Agora',
+  },
+  'Aguardando Conferência Estoque': {
+    etapaApi: 'Estoque',
+    titulo: 'Fila Gestor Estoque',
+    subtitulo: 'Esteira final do gestor de estoque com anexo da foto e assinatura de conclusão',
+    pendentesTitulo: 'Pendentes da Conferência de Estoque',
+    pendentesHint: 'Casos aguardando assinatura final do gestor de estoque.',
+    historicoTitulo: 'Histórico da Sessão de Estoque',
+    historicoHint: 'Casos assinados pelo gestor de estoque e movidos para concluído.',
+    historicoStatus: new Set([
+      'Finalizado',
+      'Reprovado',
+    ]),
+    acaoPendencia: 'Assinar e Concluir',
   },
 }
 const FILTRO_SOLICITANTE_INDEFINIDO = '__nao_identificado__'

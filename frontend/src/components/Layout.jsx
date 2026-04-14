@@ -168,6 +168,7 @@ const PAGE_META = [
 const FILA_PARAM_TO_STATUS = {
   pos_venda: 'Aguardando Aprovação Pós-Venda',
   diretoria: 'Aguardando Aprovação Diretoria',
+  estoque: 'Aguardando Conferência Estoque',
 }
 
 function normalizarStatus(value) {
@@ -238,7 +239,7 @@ function SidebarItem({ to, icon, label, active, disabled }) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout, isAdmin, isOperador } = useAuth()
+  const { user, logout, isAdmin, isOperador, isGestorEstoque } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const isMobile = useMediaQuery('(max-width: 980px)')
@@ -256,7 +257,8 @@ export default function Layout({ children }) {
   const statusQuery = resolverStatusDaBusca(searchValue)
   const isQueueStatus =
     statusQuery === 'Aguardando Aprovação Pós-Venda' ||
-    statusQuery === 'Aguardando Aprovação Diretoria'
+    statusQuery === 'Aguardando Aprovação Diretoria' ||
+    statusQuery === 'Aguardando Conferência Estoque'
   const isPrintQueuePath = location.pathname === '/impressao-finalizacao'
   const isFinalizadosPath = location.pathname === '/finalizados'
 
@@ -423,6 +425,14 @@ export default function Layout({ children }) {
         location.pathname === '/casos' &&
         statusQuery === 'Aguardando Aprovação Diretoria',
     },
+    ...((isGestorEstoque || isAdmin) ? [{
+      to: '/casos?fila=estoque',
+      icon: '>',
+      label: 'Fila Gestor Estoque',
+      active:
+        location.pathname === '/casos' &&
+        statusQuery === 'Aguardando Conferência Estoque',
+    }] : []),
     ...((isOperador || isAdmin) ? [{
       to: '/impressao-finalizacao',
       icon: '>',

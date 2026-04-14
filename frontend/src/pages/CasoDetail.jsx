@@ -81,8 +81,10 @@ const DOCS_FLUXO_OFICINA = [
 ]
 const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
 const STATUS_AGUARDANDO_IMPRESSAO = 'Aguardando Impressão Oficina'
-const FLUXO_ESTOQUE_ATIVO = false
-const STATUS_ETAPA_ESTOQUE_COMPAT = FLUXO_ESTOQUE_ATIVO ? [STATUS_AGUARDANDO_ESTOQUE] : []
+const FLUXO_ESTOQUE_ATIVO = true
+const STATUS_ETAPA_ESTOQUE_COMPAT = FLUXO_ESTOQUE_ATIVO
+  ? [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Vídeo Descarte']
+  : []
 const TIPO_DOCUMENTO_FOTO_ESTOQUE = 'Foto dos Pedidos - Estoque'
 const PAPEL_LABEL = {
   operador: 'Time Oficina',
@@ -701,13 +703,26 @@ export default function CasoDetail() {
     ? (etapaAssinaturaAtual === 'Pos-venda'
       ? 'Assinar e Encaminhar ao Diretor Comercial'
       : etapaAssinaturaAtual === 'Diretoria'
-        ? 'Assinar e Encaminhar para Impressão da Oficina'
+        ? 'Assinar e Encaminhar ao Gestor de Estoque'
         : 'Assinar e Concluir Caso')
     : 'Reprovar Caso'
   const pipelineSteps = [
     { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
-    { label: 'Gerente Pós-venda', key: 'pos', done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
-    { label: 'Diretor Comercial', key: 'dir', done: [STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status) },
+    {
+      label: 'Gerente Pós-venda',
+      key: 'pos',
+      done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+    },
+    {
+      label: 'Diretor Comercial',
+      key: 'dir',
+      done: [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+    },
+    {
+      label: 'Gestor de Estoque',
+      key: 'estoque',
+      done: [STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+    },
     { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
   ]
 

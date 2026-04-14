@@ -144,6 +144,11 @@ const FLOW_STEPS = [
   },
   {
     id: 4,
+    title: 'Gestor de Estoque',
+    text: 'Confere, anexa a foto dos pedidos e assina a conclusão do caso',
+  },
+  {
+    id: 5,
     title: 'Concluído',
     text: 'Caso finalizado com histórico completo de aprovações e documentos',
   },
@@ -160,6 +165,7 @@ const PENDING_STATUSES = [
   'Aguardando Documentos',
   'Aguardando Aprovação Pós-Venda',
   'Aguardando Aprovação Diretoria',
+  'Aguardando Conferência Estoque',
   'Aguardando Impressão Oficina',
 ]
 
@@ -180,6 +186,11 @@ const PENDING_STATUS_CONFIG = [
     to: '/casos?fila=diretoria',
   },
   {
+    status: 'Aguardando Conferência Estoque',
+    label: 'Conferência Gestor de Estoque',
+    to: '/casos?fila=estoque',
+  },
+  {
     status: 'Aguardando Impressão Oficina',
     label: 'Impressão e Finalização',
     to: '/impressao-finalizacao',
@@ -190,6 +201,7 @@ const STATUS_VIEW = {
   'Aguardando Documentos': { label: 'Aguardando docs', tone: 'warning' },
   'Aguardando Aprovação Pós-Venda': { label: 'Aprovação Pós-venda', tone: 'blue' },
   'Aguardando Aprovação Diretoria': { label: 'Aprovação diretor comercial', tone: 'warning' },
+  'Aguardando Conferência Estoque': { label: 'Conferência estoque', tone: 'warning' },
   'Aguardando Impressão Oficina': { label: 'Aguardando impressão', tone: 'success' },
   Finalizado: { label: 'Finalizado', tone: 'success' },
   Reprovado: { label: 'Reprovado', tone: 'danger' },
@@ -417,6 +429,7 @@ export default function Dashboard() {
 
   const assinaturaPos = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Pos-venda')
   const assinaturaDir = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Diretoria')
+  const assinaturaEstoque = (casoAtual?.assinaturas || []).find((sig) => sig.etapa_fluxo === 'Estoque')
 
   const statusPos = assinaturaPos
     ? assinaturaPos.status_decisao
@@ -427,6 +440,12 @@ export default function Dashboard() {
   const statusDir = assinaturaDir
     ? assinaturaDir.status_decisao
     : casoAtual?.status === 'Aguardando Aprovação Diretoria'
+      ? 'Aguardando'
+      : 'Pendente'
+
+  const statusEstoque = assinaturaEstoque
+    ? assinaturaEstoque.status_decisao
+    : casoAtual?.status === 'Aguardando Conferência Estoque'
       ? 'Aguardando'
       : 'Pendente'
 
@@ -449,6 +468,16 @@ export default function Dashboard() {
     : casoAtual?.status === 'Aguardando Aprovação Diretoria'
       ? 'Aguardando assinatura do diretor comercial.'
     : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda'].includes(casoAtual?.status || '')
+        ? 'Etapa ainda não liberada.'
+        : casoAtual?.status === 'Reprovado'
+          ? 'Fluxo encerrado por reprovação.'
+          : 'Etapa concluída.'
+
+  const assinaturaEstoqueMeta = assinaturaEstoque
+    ? `${assinaturaEstoque.usuario?.nome || 'Responsável'} em ${formatDateTime(assinaturaEstoque.data_assinatura)}`
+    : casoAtual?.status === 'Aguardando Conferência Estoque'
+      ? 'Aguardando conferência, foto dos pedidos e assinatura final do gestor de estoque.'
+      : ['Aguardando Documentos', 'Aguardando Aprovação Pós-Venda', 'Aguardando Aprovação Diretoria'].includes(casoAtual?.status || '')
         ? 'Etapa ainda não liberada.'
         : casoAtual?.status === 'Reprovado'
           ? 'Fluxo encerrado por reprovação.'
@@ -657,7 +686,7 @@ export default function Dashboard() {
                 <article className="dash-module-card">
                   <header className="dash-module-head tone-green">
                     <h3>Assinatura e Aprovação</h3>
-                    <span>Etapas 2 a 3</span>
+                    <span>Etapas 2 a 4</span>
                   </header>
 
                   <div className="dash-sign-card">
@@ -673,6 +702,14 @@ export default function Dashboard() {
                     <div className="dash-sign-meta">{assinaturaDirMeta}</div>
                     <span className={`dash-sign-badge state-${statusDir.toLowerCase()}`}>
                       {statusDir}
+                    </span>
+                  </div>
+
+                  <div className="dash-sign-card">
+                    <div className="dash-sign-title">3ª Assinatura - Gestor de Estoque</div>
+                    <div className="dash-sign-meta">{assinaturaEstoqueMeta}</div>
+                    <span className={`dash-sign-badge state-${statusEstoque.toLowerCase()}`}>
+                      {statusEstoque}
                     </span>
                   </div>
 
@@ -705,7 +742,7 @@ export default function Dashboard() {
                     <div className="dash-dossie-meta">
                       {hasCompiledPdf
                         ? `${casoAtual?.documentos?.length || 0} documentos consolidados`
-                        : 'Gerado automaticamente após as duas assinaturas'}
+                        : 'Gerado automaticamente conforme avanço das assinaturas da esteira'}
                     </div>
                     {hasCompiledPdf ? (
                       <button
