@@ -240,6 +240,39 @@ class NotificacaoMarcarTodasOut(BaseModel):
     total: int
 
 
+class PushConfigOut(BaseModel):
+    enabled: bool
+    public_vapid_key: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class PushSubscriptionKeysIn(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionRegisterIn(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeysIn
+    user_agent: Optional[str] = None
+
+
+class PushSubscriptionRemoveIn(BaseModel):
+    endpoint: str
+
+
+class PushSubscriptionOut(BaseModel):
+    id: int
+    usuario_id: int
+    endpoint: str
+    ativo: int
+    criado_em: Optional[datetime] = None
+    atualizado_em: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MinhaAssinaturaOut(BaseModel):
     tem_assinatura: bool
     assinatura_data_url: Optional[str] = None

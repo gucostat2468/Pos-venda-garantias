@@ -220,6 +220,18 @@ function getNotificacaoMeta(tipo) {
   return NOTIFICACAO_META[tipo] || NOTIFICACAO_META.default
 }
 
+function urlBase64ToUint8Array(base64String) {
+  const normalized = String(base64String || '').replace(/-/g, '+').replace(/_/g, '/')
+  const padding = '='.repeat((4 - (normalized.length % 4)) % 4)
+  const base64 = normalized + padding
+  const raw = window.atob(base64)
+  const output = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i += 1) {
+    output[i] = raw.charCodeAt(i)
+  }
+  return output
+}
+
 function SidebarItem({ to, icon, label, active, disabled }) {
   if (disabled) {
     return (
@@ -251,7 +263,11 @@ export default function Layout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false)
   const [notifErro, setNotifErro] = useState('')
   const [notifAtualizando, setNotifAtualizando] = useState(false)
+  const [popupsTempoReal, setPopupsTempoReal] = useState([])
   const notifRef = useRef(null)
+  const notificacoesInicializadasRef = useRef(false)
+  const idsNotificacoesVistosRef = useRef(new Set())
+  const popupTimersRef = useRef(new Map())
   const pageMeta = getPageMeta(location.pathname)
   const searchValue = new URLSearchParams(location.search)
   const statusQuery = resolverStatusDaBusca(searchValue)
@@ -261,6 +277,47 @@ export default function Layout({ children }) {
     statusQuery === 'Aguardando Conferência Estoque'
   const isPrintQueuePath = location.pathname === '/impressao-finalizacao'
   const isFinalizadosPath = location.pathname === '/finalizados'
+
+  const limparPopup = useCallback((popupId) => {
+    if (!popupId) return
+    const timer = popupTimersRef.current.get(popupId)
+    if (timer) {
+      window.clearTimeout(timer)
+      popupTimersRef.current.delete(popupId)
+    }
+    setPopupsTempoReal((prev) => prev.filter((p) => p.id !== popupId))
+  }, [])
+
+  const abrirPopupTempoReal = useCallback((notificacao) => {
+    if (!notificacao?.id) return
+    const popupId = `notif-${notificacao.id}-${Date.now()}`
+    setPopupsTempoReal((prev) => {
+      const next = [{ id: popupId, notificacao }, ...prev]
+      return next.slice(0, 4)
+    })
+    const timer = window.setTimeout(() => {
+      popupTimersRef.current.delete(popupId)
+      setPopupsTempoReal((prev) => prev.filter((p) => p.id !== popupId))
+    }, 10000)
+    popupTimersRef.current.set(popupId, timer)
+
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const nativeNotif = new Notification(notificacao.titulo || 'Nova notificação', {
+          body: notificacao.mensagem || 'Atualização na esteira',
+          tag: `caso-${notificacao.case_id || notificacao.id}`,
+        })
+        nativeNotif.onclick = () => {
+          window.focus()
+          if (notificacao.case_id) {
+            navigate(`/casos/${notificacao.case_id}`)
+          }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+  }, [navigate])
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -272,6 +329,103 @@ export default function Layout({ children }) {
     }
   }, [isMobile])
 
+  useEffect(() => () => {
+    popupTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    popupTimersRef.current.clear()
+  }, [])
+
+  useEffect(() => {
+    notificacoesInicializadasRef.current = false
+    idsNotificacoesVistosRef.current = new Set()
+    setPopupsTempoReal([])
+    popupTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    popupTimersRef.current.clear()
+    if (user?.id && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch((err) => console.error(err))
+    }
+  }, [user?.id])
+
+  const sincronizarPushSubscription = useCallback(async () => {
+    if (!user?.id) return
+    if (typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return
+
+    try {
+      const cfgRes = await notificacoesAPI.pushConfig()
+      const cfg = cfgRes?.data || {}
+      if (!cfg?.enabled || !cfg?.public_vapid_key) return
+
+      await navigator.serviceWorker.register('/sw.js')
+      const registration = await navigator.serviceWorker.ready
+
+      let permission = Notification.permission
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission()
+      }
+      if (permission !== 'granted') return
+
+      let subscription = await registration.pushManager.getSubscription()
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(cfg.public_vapid_key),
+        })
+      }
+
+      const serialized = subscription.toJSON() || {}
+      const keys = serialized.keys || {}
+      if (!keys.p256dh || !keys.auth) return
+
+      await notificacoesAPI.pushSubscribe({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+        },
+        user_agent: navigator.userAgent,
+      })
+    } catch (err) {
+      console.error(err)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return undefined
+    sincronizarPushSubscription().catch((err) => console.error(err))
+    return undefined
+  }, [user?.id, sincronizarPushSubscription])
+
+  useEffect(() => {
+    if (user?.id) return undefined
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return undefined
+    navigator.serviceWorker.getRegistration().then(async (registration) => {
+      if (!registration || !registration.pushManager) return
+      try {
+        const subscription = await registration.pushManager.getSubscription()
+        if (subscription) {
+          await subscription.unsubscribe()
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }).catch((err) => console.error(err))
+    return undefined
+  }, [user?.id])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return undefined
+    const onServiceWorkerMessage = (event) => {
+      const data = event?.data || {}
+      if (data?.type === 'push_notification_click' && data?.url) {
+        navigate(String(data.url))
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onServiceWorkerMessage)
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onServiceWorkerMessage)
+    }
+  }, [navigate])
+
   const carregarNotificacoes = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return
     if (!notificacoesDisponiveis) return
@@ -281,7 +435,27 @@ export default function Layout({ children }) {
         notificacoesAPI.listar({ limite: 30 }),
         notificacoesAPI.resumo(),
       ])
-      setNotificacoes(Array.isArray(listaRes.data) ? listaRes.data : [])
+      const lista = Array.isArray(listaRes.data) ? listaRes.data : []
+      if (!notificacoesInicializadasRef.current) {
+        notificacoesInicializadasRef.current = true
+        idsNotificacoesVistosRef.current = new Set(lista.map((n) => n.id).filter(Boolean))
+      } else {
+        const novas = lista
+          .filter((n) => n?.id && Number(n?.lida || 0) === 0 && !idsNotificacoesVistosRef.current.has(n.id))
+          .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
+        if (novas.length > 0) {
+          novas.forEach((notificacaoNova) => abrirPopupTempoReal(notificacaoNova))
+        }
+        lista.forEach((n) => {
+          if (n?.id) idsNotificacoesVistosRef.current.add(n.id)
+        })
+        if (idsNotificacoesVistosRef.current.size > 1000) {
+          idsNotificacoesVistosRef.current = new Set(
+            lista.slice(0, 200).map((n) => n.id).filter(Boolean)
+          )
+        }
+      }
+      setNotificacoes(lista)
       setNaoLidas(Number(resumoRes.data?.nao_lidas || 0))
       if (!notificacoesDisponiveis) {
         setNotificacoesDisponiveis(true)
@@ -300,7 +474,7 @@ export default function Layout({ children }) {
     } finally {
       if (!silent) setNotifLoading(false)
     }
-  }, [user?.id, notificacoesDisponiveis])
+  }, [user?.id, notificacoesDisponiveis, abrirPopupTempoReal])
 
   useEffect(() => {
     if (!user?.id) return undefined
@@ -311,7 +485,7 @@ export default function Layout({ children }) {
 
   useRealtimeRefresh(
     () => carregarNotificacoes({ silent: true }),
-    { enabled: Boolean(user?.id) && notificacoesDisponiveis, intervalMs: 2000 }
+    { enabled: Boolean(user?.id) && notificacoesDisponiveis, intervalMs: 2000, runWhenHidden: true }
   )
 
   useEffect(() => {
@@ -383,6 +557,12 @@ export default function Layout({ children }) {
     if (notificacao.case_id) {
       navigate(`/casos/${notificacao.case_id}`)
     }
+  }
+
+  const handleAbrirPopupTempoReal = async (popup) => {
+    if (!popup?.notificacao) return
+    await handleAbrirCasoNotificacao(popup.notificacao)
+    limparPopup(popup.id)
   }
 
   const menuPrincipal = [
@@ -479,6 +659,52 @@ export default function Layout({ children }) {
 
   return (
     <div className="dp-shell">
+      {popupsTempoReal.length > 0 && (
+        <div className="dp-realtime-popups" aria-live="polite" aria-label="Notificações em tempo real">
+          {popupsTempoReal.map((popup) => {
+            const meta = getNotificacaoMeta(popup?.notificacao?.tipo)
+            const notif = popup?.notificacao || {}
+            return (
+              <article key={popup.id} className={`dp-realtime-popup tone-${meta.tone}`}>
+                <div className="dp-realtime-popup-head">
+                  <span className={`dp-notif-type type-${meta.tone}`}>
+                    <span>{meta.icon}</span> {meta.label}
+                  </span>
+                  <button
+                    type="button"
+                    className="dp-realtime-popup-close"
+                    onClick={() => limparPopup(popup.id)}
+                    aria-label="Fechar notificação"
+                  >
+                    ×
+                  </button>
+                </div>
+                <strong className="dp-realtime-popup-title">{notif.titulo || 'Nova notificação'}</strong>
+                <p className="dp-realtime-popup-msg">{notif.mensagem || 'Atualização recebida.'}</p>
+                <div className="dp-realtime-popup-actions">
+                  {notif.case_id && (
+                    <button
+                      type="button"
+                      className="dp-realtime-popup-open"
+                      onClick={() => handleAbrirPopupTempoReal(popup)}
+                    >
+                      Abrir caso
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="dp-realtime-popup-dismiss"
+                    onClick={() => limparPopup(popup.id)}
+                  >
+                    Dispensar
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+
       {isMobile && mobileMenuOpen && (
         <button
           className="dp-mobile-overlay"

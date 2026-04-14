@@ -23,6 +23,13 @@ import models, schemas
 from auth import get_current_user, get_current_user_download, require_roles
 from utils.pdf_compiler import compile_pdf
 from services.auditoria import gerar_diff, registrar_evento_auditoria
+from services.finalizados_archive import (
+    archive_caso_finalizado,
+    resolve_documento_arquivado,
+    resolve_documento_original_pdf_arquivado,
+    resolve_dossie_arquivado,
+)
+from services.push_notifications import enviar_push_para_notificacao
 from services.signature_store import (
     decode_signature_data_url,
     salvar_assinatura_usuario,
@@ -327,9 +334,9 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
     )
     if not caso:
         raise HTTPException(status_code=404, detail="Caso não encontrado")
-    if caso.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO:
-        # Mantém compatibilidade de casos legados de bateria:
-        # converte para a etapa atual do Gestor de Estoque.
+    if caso.status in {STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO, STATUS_AGUARDANDO_IMPRESSAO}:
+        # Mantém compatibilidade de casos legados:
+        # converte etapas antigas para a etapa atual do Gestor de Estoque.
         caso.status = STATUS_AGUARDANDO_ESTOQUE
         caso.atualizado_em = datetime.utcnow()
         db.flush()
@@ -339,7 +346,7 @@ def _load_caso(caso_id: int, db: Session) -> models.CasoGarantia:
 def _migrar_status_legado_video_para_estoque(db: Session) -> None:
     atualizados = (
         db.query(models.CasoGarantia)
-        .filter(models.CasoGarantia.status == STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO)
+        .filter(models.CasoGarantia.status.in_([STATUS_AGUARDANDO_VIDEO_DESCARTE_LEGADO, STATUS_AGUARDANDO_IMPRESSAO]))
         .update(
             {
                 models.CasoGarantia.status: STATUS_AGUARDANDO_ESTOQUE,
@@ -380,17 +387,22 @@ def _criar_notificacao(
     mensagem: str,
     case_id: Optional[int] = None,
 ) -> None:
-    db.add(
-        models.Notificacao(
-            usuario_id=usuario_id,
-            case_id=case_id,
-            tipo=tipo,
-            titulo=titulo,
-            mensagem=mensagem,
-            lida=0,
-            criado_em=datetime.utcnow(),
-        )
+    notificacao = models.Notificacao(
+        usuario_id=usuario_id,
+        case_id=case_id,
+        tipo=tipo,
+        titulo=titulo,
+        mensagem=mensagem,
+        lida=0,
+        criado_em=datetime.utcnow(),
     )
+    db.add(notificacao)
+    db.flush()
+    # Push em segundo canal (celular/aba fechada), sem impactar o fluxo principal.
+    try:
+        enviar_push_para_notificacao(db, notificacao)
+    except Exception:
+        pass
 
 
 def _notificar_papel(
@@ -427,13 +439,34 @@ def _notificar_operacao_todos(
     case_id: Optional[int] = None,
     excluir_usuario_id: Optional[int] = None,
 ) -> None:
-    usuarios = db.query(models.Usuario).filter(models.Usuario.ativo == 1).all()
-    for usuario in usuarios:
-        if excluir_usuario_id is not None and usuario.id == excluir_usuario_id:
-            continue
+    # Notificação inteligente (sem broadcast global):
+    # 1) administradores para governança
+    # 2) usuário que criou o caso (time oficina responsável pelo pedido)
+    destinatarios_ids = set()
+
+    admins = db.query(models.Usuario.id).filter(
+        models.Usuario.papel == "admin",
+        models.Usuario.ativo == 1,
+    ).all()
+    destinatarios_ids.update(int(row[0]) for row in admins if row and row[0] is not None)
+
+    if case_id is not None:
+        caso = db.query(models.CasoGarantia).filter(models.CasoGarantia.id == case_id).first()
+        if caso and caso.criado_por_usuario_id:
+            criador = db.query(models.Usuario).filter(
+                models.Usuario.id == caso.criado_por_usuario_id,
+                models.Usuario.ativo == 1,
+            ).first()
+            if criador:
+                destinatarios_ids.add(int(criador.id))
+
+    if excluir_usuario_id is not None and int(excluir_usuario_id) in destinatarios_ids:
+        destinatarios_ids.remove(int(excluir_usuario_id))
+
+    for usuario_id in sorted(destinatarios_ids):
         _criar_notificacao(
             db=db,
-            usuario_id=usuario.id,
+            usuario_id=usuario_id,
             tipo=tipo,
             titulo=titulo,
             mensagem=mensagem,
@@ -562,6 +595,77 @@ def _remover_backup_pdf_original(path_arquivo: str) -> None:
             os.remove(backup)
         except OSError:
             pass
+
+
+def _resolver_path_documento_ativo_ou_arquivado(
+    caso: models.CasoGarantia,
+    doc: models.Documento,
+) -> tuple[str, bool]:
+    if doc.path_arquivo and os.path.exists(doc.path_arquivo):
+        return doc.path_arquivo, False
+    archived = resolve_documento_arquivado(caso.id, doc.id)
+    if archived and os.path.exists(archived):
+        return archived, True
+    return doc.path_arquivo or "", False
+
+
+def _resolver_fonte_pdf_documento(
+    caso: models.CasoGarantia,
+    doc: models.Documento,
+    path_documento_resolvido: Optional[str] = None,
+) -> str:
+    if doc.path_arquivo and os.path.exists(doc.path_arquivo):
+        return _obter_fonte_pdf(doc.path_arquivo)
+
+    archived_orig = resolve_documento_original_pdf_arquivado(caso.id, doc.id)
+    if archived_orig and os.path.exists(archived_orig):
+        return archived_orig
+
+    if path_documento_resolvido and os.path.exists(path_documento_resolvido):
+        return path_documento_resolvido
+
+    return doc.path_arquivo or path_documento_resolvido or ""
+
+
+def _arquivar_finalizado_e_registrar(
+    caso_id: int,
+    db: Session,
+    current_user: models.Usuario,
+    origem_fluxo: str,
+) -> None:
+    caso = _load_caso(caso_id, db)
+    try:
+        manifest = archive_caso_finalizado(caso, strict_required=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Finalização bloqueada para proteção do histórico: "
+                f"{exc}"
+            ),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao criar arquivo imutável do histórico finalizado: {exc}",
+        ) from exc
+
+    integridade = manifest.get("integridade") or {}
+    registrar_evento_auditoria(
+        db,
+        acao="caso_finalizado_arquivado",
+        modulo="casos_historico",
+        descricao=f"Arquivo imutável do caso {_codigo_caso(caso)} atualizado.",
+        usuario=current_user,
+        case_id=caso.id,
+        entidade="caso_garantia",
+        entidade_id=caso.id,
+        detalhes={
+            "origem_fluxo": origem_fluxo,
+            "missing_required_count": int(integridade.get("missing_required_count") or 0),
+            "missing_required_files": integridade.get("missing_required_files") or [],
+        },
+    )
 
 
 def _fmt_data_hora_br(data_hora: Optional[datetime]) -> str:
@@ -983,6 +1087,7 @@ def criar_caso(
             f"Status inicial: {caso.status}."
         ),
         case_id=caso.id,
+        excluir_usuario_id=current_user.id,
     )
     db.commit()
 
@@ -1021,6 +1126,7 @@ def obter_caso(
                 f"'{STATUS_AGUARDANDO_POS_VENDA}'."
             ),
             case_id=caso.id,
+            excluir_usuario_id=current_user.id,
         )
         registrar_evento_auditoria(
             db,
@@ -1158,6 +1264,7 @@ def atualizar_caso(
                 f"Campos alterados: {resumo_campos}."
             ),
             case_id=caso.id,
+            excluir_usuario_id=current_user.id,
         )
     db.commit()
     return _load_caso(caso_id, db)
@@ -1206,6 +1313,7 @@ def deletar_caso(
             f"Último status conhecido: {caso.status}."
         ),
         case_id=caso.id,
+        excluir_usuario_id=current_user.id,
     )
     db.delete(caso)
     db.commit()
@@ -1343,6 +1451,7 @@ async def upload_documento(
             f"'{tipo_documento}' em {_codigo_caso(caso)} (arquivo: {doc.nome_arquivo})."
         ),
         case_id=caso_id,
+        excluir_usuario_id=current_user.id,
     )
 
     # Atualizar status para assinatura do gerente de pós-venda ao atingir documentação mínima
@@ -1374,6 +1483,7 @@ async def upload_documento(
                     f"'{STATUS_AGUARDANDO_POS_VENDA}' após anexação de remessa."
                 ),
                 case_id=caso_refreshed.id,
+                excluir_usuario_id=current_user.id,
             )
             registrar_evento_auditoria(
                 db,
@@ -1398,6 +1508,7 @@ async def upload_documento(
                 f"'{STATUS_AGUARDANDO_DOCUMENTOS}' após atualização de documentos."
             ),
             case_id=caso_refreshed.id,
+            excluir_usuario_id=current_user.id,
         )
         registrar_evento_auditoria(
             db,
@@ -1433,18 +1544,22 @@ def download_documento(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
-    _load_caso(caso_id, db)
+    caso = _load_caso(caso_id, db)
     doc = db.query(models.Documento).filter(
         models.Documento.id == doc_id,
         models.Documento.case_id == caso_id
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
-    if not os.path.exists(doc.path_arquivo):
-        raise HTTPException(status_code=404, detail="Arquivo não encontrado no servidor")
+    arquivo_path_resolvido, veio_do_arquivo_finalizado = _resolver_path_documento_ativo_ou_arquivado(caso, doc)
+    if not arquivo_path_resolvido or not os.path.exists(arquivo_path_resolvido):
+        raise HTTPException(
+            status_code=404,
+            detail="Arquivo não encontrado no servidor nem no arquivo de finalizados.",
+        )
 
     # Para PDFs assinados, anexar uma página com as assinaturas capturadas
-    ext = Path(doc.path_arquivo).suffix.lower()
+    ext = Path(arquivo_path_resolvido).suffix.lower()
     if ext == ".pdf":
         assinaturas = (
             db.query(models.DocumentoAssinatura)
@@ -1457,7 +1572,7 @@ def download_documento(
             .all()
         )
         if assinaturas:
-            pdf_fonte = _obter_fonte_pdf(doc.path_arquivo)
+            pdf_fonte = _resolver_fonte_pdf_documento(caso, doc, path_documento_resolvido=arquivo_path_resolvido)
             try:
                 pdf_assinado_bytes = _carimbar_assinaturas_no_pdf_documento(
                     doc,
@@ -1486,6 +1601,10 @@ def download_documento(
                 case_id=caso_id,
                 entidade="documento",
                 entidade_id=doc.id,
+                detalhes={
+                    "arquivo_resolvido_path": arquivo_path_resolvido,
+                    "arquivo_recuperado_do_historico_finalizado": veio_do_arquivo_finalizado,
+                },
             )
             db.commit()
             return Response(
@@ -1503,11 +1622,15 @@ def download_documento(
         case_id=caso_id,
         entidade="documento",
         entidade_id=doc.id,
+        detalhes={
+            "arquivo_resolvido_path": arquivo_path_resolvido,
+            "arquivo_recuperado_do_historico_finalizado": veio_do_arquivo_finalizado,
+        },
     )
     db.commit()
-    media_type = _resolver_mime_type(doc.nome_arquivo, doc.path_arquivo, doc.mime_type)
+    media_type = _resolver_mime_type(doc.nome_arquivo, arquivo_path_resolvido, doc.mime_type)
     return FileResponse(
-        doc.path_arquivo,
+        arquivo_path_resolvido,
         media_type=media_type,
         headers={"Content-Disposition": _content_disposition(doc.nome_arquivo, disposition)},
     )
@@ -1667,6 +1790,7 @@ def assinar_documento_individual(
             f"na etapa {etapa} do {_codigo_caso(caso)}."
         ),
         case_id=caso_id,
+        excluir_usuario_id=current_user.id,
     )
     db.commit()
     db.refresh(assinatura)
@@ -1756,6 +1880,7 @@ def deletar_documento(
             f"Status: {status_anterior} -> {caso_db.status}."
         ),
         case_id=caso_id,
+        excluir_usuario_id=current_user.id,
     )
 
     db.commit()
@@ -1894,6 +2019,7 @@ def assinar_caso(
                 f"Status: {status_anterior} -> {caso_db.status}."
             ),
             case_id=caso_id,
+            excluir_usuario_id=current_user.id,
         )
     else:
         tipo_notificacao = "operacao_caso_assinado"
@@ -1913,6 +2039,7 @@ def assinar_caso(
                 f"Status: {status_anterior} -> {caso_db.status}."
             ),
             case_id=caso_id,
+            excluir_usuario_id=current_user.id,
         )
 
     db.commit()
@@ -1927,6 +2054,16 @@ def assinar_caso(
                 status_code=500,
                 detail=f"A aprovação foi registrada, mas houve erro ao compilar o dossiê PDF: {exc}"
             ) from exc
+        caso_final = _load_caso(caso_id, db)
+
+    if caso_final.status == "Finalizado":
+        _arquivar_finalizado_e_registrar(
+            caso_id=caso_id,
+            db=db,
+            current_user=current_user,
+            origem_fluxo=f"assinatura_{etapa.lower()}",
+        )
+        db.commit()
 
     return _load_caso(caso_id, db)
 
@@ -1994,6 +2131,13 @@ def confirmar_impressao_oficina(
             "após confirmação de impressão em 3 vias."
         ),
         case_id=caso_id,
+        excluir_usuario_id=current_user.id,
+    )
+    _arquivar_finalizado_e_registrar(
+        caso_id=caso_id,
+        db=db,
+        current_user=current_user,
+        origem_fluxo="impressao_oficina",
     )
     db.commit()
 
@@ -2037,7 +2181,15 @@ def compilar_pdf_manual(
             f"{_nome_usuario(current_user)} recompilou o dossiê de {_codigo_caso(caso)}."
         ),
         case_id=caso.id,
+        excluir_usuario_id=current_user.id,
     )
+    if caso.status == "Finalizado":
+        _arquivar_finalizado_e_registrar(
+            caso_id=caso.id,
+            db=db,
+            current_user=current_user,
+            origem_fluxo="recompilacao_manual",
+        )
     db.commit()
     return {"message": "PDF compilado com sucesso", "path": result_path}
 
@@ -2059,10 +2211,18 @@ def download_pdf_compilado(
         try:
             _compilar_pdf(caso, db)
         except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=f"Falha ao gerar dossiê atualizado: {exc}") from exc
+            dossie_arquivado = resolve_dossie_arquivado(caso.id) if caso.status == "Finalizado" else None
+            if not dossie_arquivado or not os.path.exists(dossie_arquivado):
+                raise HTTPException(status_code=500, detail=f"Falha ao gerar dossiê atualizado: {exc}") from exc
         caso = _load_caso(caso_id, db)
 
-    if not caso.link_pdf_compilado or not os.path.exists(caso.link_pdf_compilado):
+    pdf_path_resolvido = caso.link_pdf_compilado if caso.link_pdf_compilado and os.path.exists(caso.link_pdf_compilado) else None
+    veio_do_arquivo_finalizado = False
+    if not pdf_path_resolvido:
+        pdf_path_resolvido = resolve_dossie_arquivado(caso.id)
+        veio_do_arquivo_finalizado = bool(pdf_path_resolvido)
+
+    if not pdf_path_resolvido or not os.path.exists(pdf_path_resolvido):
         raise HTTPException(status_code=404, detail="PDF compilado não disponível")
     registrar_evento_auditoria(
         db,
@@ -2073,12 +2233,15 @@ def download_pdf_compilado(
         case_id=caso.id,
         entidade="caso_garantia",
         entidade_id=caso.id,
-        detalhes={"pdf_compilado_path": caso.link_pdf_compilado},
+        detalhes={
+            "pdf_compilado_path": pdf_path_resolvido,
+            "pdf_recuperado_do_historico_finalizado": veio_do_arquivo_finalizado,
+        },
     )
     db.commit()
     filename = f"dossie_garantia_{caso.dji_case_id or caso.id}.pdf"
     return FileResponse(
-        caso.link_pdf_compilado,
+        pdf_path_resolvido,
         media_type="application/pdf",
         headers={"Content-Disposition": _content_disposition(filename, disposition)},
     )
@@ -2121,16 +2284,27 @@ def _compilar_pdf(caso: models.CasoGarantia, db: Session) -> str:
 
         document_paths = []
         for d in caso.documentos:
+            path_documento_resolvido, veio_do_historico_finalizado = _resolver_path_documento_ativo_ou_arquivado(caso, d)
+            if not path_documento_resolvido or not os.path.exists(path_documento_resolvido):
+                raise RuntimeError(
+                    f"Documento '{d.nome_arquivo}' não foi encontrado no armazenamento ativo "
+                    "nem no arquivo de finalizados."
+                )
             doc_info = {
-                "path_arquivo": d.path_arquivo,
+                "path_arquivo": path_documento_resolvido,
                 "tipo_documento": d.tipo_documento,
                 "nome_arquivo": d.nome_arquivo,
+                "arquivo_recuperado_do_historico_finalizado": veio_do_historico_finalizado,
             }
-            ext = Path(d.path_arquivo).suffix.lower() if d.path_arquivo else ""
+            ext = Path(path_documento_resolvido).suffix.lower() if path_documento_resolvido else ""
             if ext == ".pdf":
                 assinaturas_doc = assinaturas_por_documento.get(d.id, [])
                 if assinaturas_doc:
-                    pdf_fonte = _obter_fonte_pdf(d.path_arquivo)
+                    pdf_fonte = _resolver_fonte_pdf_documento(
+                        caso,
+                        d,
+                        path_documento_resolvido=path_documento_resolvido,
+                    )
                     try:
                         doc_info["pdf_bytes"] = _carimbar_assinaturas_no_pdf_documento(
                             d,

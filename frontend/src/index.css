@@ -645,6 +645,107 @@ textarea:focus-visible {
   cursor: not-allowed;
 }
 
+.dp-realtime-popups {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 220;
+  width: min(360px, calc(100vw - 20px));
+  display: grid;
+  gap: 10px;
+}
+
+.dp-realtime-popup {
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-left: 4px solid #94a3b8;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 10px 11px;
+  display: grid;
+  gap: 8px;
+}
+
+.dp-realtime-popup.tone-blue {
+  border-left-color: #3b82f6;
+}
+
+.dp-realtime-popup.tone-teal {
+  border-left-color: #14b8a6;
+}
+
+.dp-realtime-popup.tone-amber {
+  border-left-color: #f59e0b;
+}
+
+.dp-realtime-popup.tone-green {
+  border-left-color: #16a34a;
+}
+
+.dp-realtime-popup.tone-neutral {
+  border-left-color: #94a3b8;
+}
+
+.dp-realtime-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dp-realtime-popup-close {
+  border: 1px solid #d3deea;
+  border-radius: 8px;
+  background: #fff;
+  color: #6b7280;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  font-size: 16px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.dp-realtime-popup-title {
+  color: #1f3250;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.dp-realtime-popup-msg {
+  margin: 0;
+  color: #4f5f74;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.dp-realtime-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dp-realtime-popup-open,
+.dp-realtime-popup-dismiss {
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
+.dp-realtime-popup-open {
+  border: 1px solid #c8d8f0;
+  background: #edf4ff;
+  color: #275ec5;
+}
+
+.dp-realtime-popup-dismiss {
+  border: 1px solid #d3deea;
+  background: #fff;
+  color: #475569;
+}
+
 .dp-topbar-avatar {
   width: 34px;
   height: 34px;
@@ -2307,6 +2408,12 @@ textarea:focus-visible {
 }
 
 @media (max-width: 980px) {
+  .dp-realtime-popups {
+    top: 10px;
+    right: 10px;
+    width: min(360px, calc(100vw - 18px));
+  }
+
   .dp-sidebar.is-mobile {
     position: fixed;
     left: 0;
@@ -2415,6 +2522,12 @@ textarea:focus-visible {
   .dp-notif-panel {
     right: 0;
     width: min(390px, calc(100vw - 20px));
+  }
+
+  .dp-realtime-popups {
+    top: 8px;
+    right: 8px;
+    width: calc(100vw - 16px);
   }
 
   .dash-kpi-grid {

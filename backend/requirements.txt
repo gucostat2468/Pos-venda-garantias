@@ -10,3 +10,4 @@ reportlab==4.1.0
 aiofiles==23.2.1
 python-dotenv==1.0.1
 openpyxl==3.1.5
+pywebpush==2.0.3

@@ -25,6 +25,8 @@ frontend/.venv/
 backend/garantias.db
 backend/uploads/
 backend/compiled/
+backend/archive_finalizados/
+backend/push_vapid_keys.json
 
 # Python env/config
 .env

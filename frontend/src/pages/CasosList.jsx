@@ -303,6 +303,14 @@ export default function CasosList() {
   }, [searchParamsKey, filtroStatus])
 
   useEffect(() => {
+    const params = new URLSearchParams(searchParamsKey)
+    const temFiltroExplicito = Boolean(params.get('status') || params.get('fila'))
+    if (user?.papel === 'gestor_estoque' && !temFiltroExplicito) {
+      atualizarFiltroStatus('Aguardando Conferência Estoque')
+    }
+  }, [user?.papel, searchParamsKey, atualizarFiltroStatus])
+
+  useEffect(() => {
     clientesAPI.listar().then(r => setClientes(r.data)).catch(() => {})
   }, [])
 

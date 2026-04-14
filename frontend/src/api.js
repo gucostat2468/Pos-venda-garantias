@@ -106,4 +106,7 @@ export const notificacoesAPI = {
   resumo: () => api.get('/notificacoes/resumo'),
   marcarLida: (id) => api.post(`/notificacoes/${id}/marcar-lida`),
   marcarTodasLidas: () => api.post('/notificacoes/marcar-todas-lidas'),
+  pushConfig: () => api.get('/notificacoes/push/config'),
+  pushSubscribe: (payload) => api.post('/notificacoes/push/subscribe', payload),
+  pushUnsubscribe: (payload) => api.post('/notificacoes/push/unsubscribe', payload),
 }

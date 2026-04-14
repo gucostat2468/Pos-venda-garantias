@@ -1,0 +1,17 @@
+{
+  "name": "DronePro Garantias",
+  "short_name": "DronePro",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#1f67c4",
+  "description": "Plataforma de aprovações de garantia com notificações em tempo real.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

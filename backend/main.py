@@ -12,6 +12,7 @@ import models  # noqa: F401 – garante que as tabelas são registradas
 from routers import auth, casos, clientes, usuarios, credito, notificacoes, auditoria
 from services.credito_ingest import sync_credito_files_to_db
 from services.credito_reconcile import reconcile_credito_to_cases
+from services.finalizados_archive import backfill_archives_for_finalizados, ensure_archive_root
 from seed_data import seed_database
 
 # Criar tabelas
@@ -22,6 +23,7 @@ Base.metadata.create_all(bind=engine)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(os.path.join(BASE_DIR, "uploads"), exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "compiled"), exist_ok=True)
+ensure_archive_root()
 
 app = FastAPI(
     title="Sistema de Gerenciamento de Garantias – DronePro",
@@ -74,8 +76,16 @@ def startup_sync_credito_data():
     try:
         sync_credito_files_to_db(db, Path(BASE_DIR) / "credito")
         reconcile_credito_to_cases(db)
+        summary = backfill_archives_for_finalizados(db)
+        print(
+            "Backfill histórico finalizados: "
+            f"total={summary.get('total_finalizados', 0)}, "
+            f"ok={summary.get('arquivados_ok', 0)}, "
+            f"alerta={summary.get('arquivados_com_alerta', 0)}, "
+            f"erros={len(summary.get('erros', []))}"
+        )
     except Exception as exc:
-        print(f"Erro ao sincronizar/reconciliar base de credito no startup: {exc}")
+        print(f"Erro no startup (crédito/histórico finalizados): {exc}")
     finally:
         db.close()
 

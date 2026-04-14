@@ -25,6 +25,7 @@ class Usuario(Base):
         foreign_keys="CasoGarantia.criado_por_usuario_id",
     )
     notificacoes = relationship("Notificacao", back_populates="usuario", cascade="all, delete-orphan")
+    push_subscriptions = relationship("PushSubscription", back_populates="usuario", cascade="all, delete-orphan")
     auditoria_eventos = relationship("AuditoriaEvento", back_populates="usuario")
 
 
@@ -136,6 +137,27 @@ class Notificacao(Base):
 
     usuario = relationship("Usuario", back_populates="notificacoes")
     caso = relationship("CasoGarantia", back_populates="notificacoes")
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("usuario_id", "endpoint", name="uq_push_subscription_usuario_endpoint"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(String(1024), nullable=False, index=True)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    user_agent = Column(String(255), nullable=True)
+    ativo = Column(Integer, default=1, index=True)
+    criado_em = Column(DateTime, default=func.now(), index=True)
+    atualizado_em = Column(DateTime, default=func.now(), onupdate=func.now(), index=True)
+    ultimo_envio_em = Column(DateTime, nullable=True, index=True)
+    ultimo_erro = Column(String(500), nullable=True)
+
+    usuario = relationship("Usuario", back_populates="push_subscriptions")
 
 
 class AuditoriaEvento(Base):

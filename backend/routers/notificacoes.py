@@ -8,6 +8,7 @@ from database import get_db
 from auth import get_current_user
 import models, schemas
 from services.auditoria import registrar_evento_auditoria
+from services.push_notifications import config_push_publico
 
 router = APIRouter()
 
@@ -45,6 +46,120 @@ def resumo_notificacoes(
         models.Notificacao.lida == 0,
     ).count()
     return {"total": total, "nao_lidas": nao_lidas}
+
+
+@router.get("/push/config", response_model=schemas.PushConfigOut)
+def push_config(
+    current_user: models.Usuario = Depends(get_current_user),
+):
+    _ = current_user
+    return config_push_publico()
+
+
+@router.post("/push/subscribe", response_model=schemas.PushSubscriptionOut)
+def registrar_push_subscription(
+    body: schemas.PushSubscriptionRegisterIn,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_user),
+):
+    endpoint = (body.endpoint or "").strip()
+    p256dh = (body.keys.p256dh or "").strip()
+    auth = (body.keys.auth or "").strip()
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(status_code=400, detail="Subscription inválida para push.")
+    if len(endpoint) > 1024:
+        raise HTTPException(status_code=400, detail="Endpoint de push excede tamanho permitido.")
+
+    now = datetime.utcnow()
+    # Um endpoint deve ficar vinculado a um único usuário ativo por vez.
+    db.query(models.PushSubscription).filter(
+        models.PushSubscription.endpoint == endpoint,
+        models.PushSubscription.usuario_id != current_user.id,
+    ).update(
+        {
+            models.PushSubscription.ativo: 0,
+            models.PushSubscription.atualizado_em: now,
+            models.PushSubscription.ultimo_erro: "Endpoint reatribuído para outro usuário.",
+        },
+        synchronize_session=False,
+    )
+
+    sub = db.query(models.PushSubscription).filter(
+        models.PushSubscription.usuario_id == current_user.id,
+        models.PushSubscription.endpoint == endpoint,
+    ).first()
+    if sub:
+        sub.p256dh = p256dh
+        sub.auth = auth
+        sub.user_agent = (body.user_agent or "")[:255] or None
+        sub.ativo = 1
+        sub.atualizado_em = now
+        sub.ultimo_erro = None
+    else:
+        sub = models.PushSubscription(
+            usuario_id=current_user.id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            user_agent=(body.user_agent or "")[:255] or None,
+            ativo=1,
+            criado_em=now,
+            atualizado_em=now,
+        )
+        db.add(sub)
+
+    db.flush()
+    registrar_evento_auditoria(
+        db,
+        acao="push_subscription_registrada",
+        modulo="notificacoes_push",
+        descricao=f"Inscrição push registrada para usuário #{current_user.id}.",
+        usuario=current_user,
+        entidade="push_subscription",
+        entidade_id=sub.id,
+        detalhes={"endpoint_prefix": endpoint[:80], "ativo": sub.ativo},
+    )
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+@router.post("/push/unsubscribe")
+def remover_push_subscription(
+    body: schemas.PushSubscriptionRemoveIn,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_user),
+):
+    endpoint = (body.endpoint or "").strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Endpoint inválido.")
+
+    now = datetime.utcnow()
+    total = db.query(models.PushSubscription).filter(
+        models.PushSubscription.usuario_id == current_user.id,
+        models.PushSubscription.endpoint == endpoint,
+        models.PushSubscription.ativo == 1,
+    ).update(
+        {
+            models.PushSubscription.ativo: 0,
+            models.PushSubscription.atualizado_em: now,
+            models.PushSubscription.ultimo_erro: "Subscription removida pelo usuário.",
+        },
+        synchronize_session=False,
+    )
+
+    if total > 0:
+        registrar_evento_auditoria(
+            db,
+            acao="push_subscription_removida",
+            modulo="notificacoes_push",
+            descricao=f"Inscrição push removida para usuário #{current_user.id}.",
+            usuario=current_user,
+            entidade="push_subscription",
+            detalhes={"endpoint_prefix": endpoint[:80], "total": total},
+        )
+        db.commit()
+    return {"message": "Subscription removida", "total": total}
 
 
 @router.post("/{notificacao_id}/marcar-lida", response_model=schemas.NotificacaoOut)

@@ -114,6 +114,32 @@ def run_sqlite_migrations(engine) -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notificacoes_criado_em ON notificacoes(criado_em)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notificacoes_tipo ON notificacoes(tipo)"))
 
+        if not _table_exists(conn, "push_subscriptions"):
+            conn.execute(text("""
+                CREATE TABLE push_subscriptions (
+                    id INTEGER PRIMARY KEY,
+                    usuario_id INTEGER NOT NULL,
+                    endpoint VARCHAR(1024) NOT NULL,
+                    p256dh VARCHAR(255) NOT NULL,
+                    auth VARCHAR(255) NOT NULL,
+                    user_agent VARCHAR(255),
+                    ativo INTEGER DEFAULT 1,
+                    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ultimo_envio_em DATETIME,
+                    ultimo_erro VARCHAR(500),
+                    FOREIGN KEY(usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+                    CONSTRAINT uq_push_subscription_usuario_endpoint UNIQUE (usuario_id, endpoint)
+                )
+            """))
+
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_usuario_id ON push_subscriptions(usuario_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_endpoint ON push_subscriptions(endpoint)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_ativo ON push_subscriptions(ativo)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_criado_em ON push_subscriptions(criado_em)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_atualizado_em ON push_subscriptions(atualizado_em)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_push_subscriptions_ultimo_envio_em ON push_subscriptions(ultimo_envio_em)"))
+
         if not _table_exists(conn, "auditoria_eventos"):
             conn.execute(text("""
                 CREATE TABLE auditoria_eventos (

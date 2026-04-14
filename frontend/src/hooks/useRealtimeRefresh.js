@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 export default function useRealtimeRefresh(callback, options = {}) {
-  const { enabled = true, intervalMs = 2000 } = options
+  const { enabled = true, intervalMs = 2000, runWhenHidden = false } = options
   const runningRef = useRef(false)
 
   useEffect(() => {
@@ -10,7 +10,8 @@ export default function useRealtimeRefresh(callback, options = {}) {
     let cancelled = false
 
     const run = async () => {
-      if (cancelled || document.hidden || runningRef.current) return
+      if (cancelled || runningRef.current) return
+      if (!runWhenHidden && document.hidden) return
       runningRef.current = true
       try {
         await callback()
@@ -22,7 +23,7 @@ export default function useRealtimeRefresh(callback, options = {}) {
     }
 
     const onVisible = () => {
-      if (!document.hidden) run()
+      if (runWhenHidden || !document.hidden) run()
     }
 
     const timer = window.setInterval(run, intervalMs)
@@ -35,5 +36,5 @@ export default function useRealtimeRefresh(callback, options = {}) {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
     }
-  }, [callback, enabled, intervalMs])
+  }, [callback, enabled, intervalMs, runWhenHidden])
 }
