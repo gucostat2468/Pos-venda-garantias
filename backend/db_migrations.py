@@ -26,6 +26,10 @@ def run_sqlite_migrations(engine) -> None:
         if _table_exists(conn, "usuarios") and not _column_exists(conn, "usuarios", "assinatura_padrao_atualizada_em"):
             conn.execute(text("ALTER TABLE usuarios ADD COLUMN assinatura_padrao_atualizada_em DATETIME"))
 
+        if _table_exists(conn, "clientes") and not _column_exists(conn, "clientes", "ativo"):
+            conn.execute(text("ALTER TABLE clientes ADD COLUMN ativo INTEGER DEFAULT 1"))
+            conn.execute(text("UPDATE clientes SET ativo = 1 WHERE ativo IS NULL"))
+
         if _table_exists(conn, "credito_extratos") and not _column_exists(conn, "credito_extratos", "cliente_id"):
             conn.execute(text("ALTER TABLE credito_extratos ADD COLUMN cliente_id INTEGER"))
 

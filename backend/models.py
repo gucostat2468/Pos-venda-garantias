@@ -37,6 +37,7 @@ class Cliente(Base):
     cnpj = Column(String(20), unique=True, index=True)
     email = Column(String(150))
     telefone = Column(String(30))
+    ativo = Column(Integer, default=1, nullable=False)
     criado_em = Column(DateTime, default=func.now())
 
     casos = relationship("CasoGarantia", back_populates="cliente")

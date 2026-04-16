@@ -1,12 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import re
 from database import get_db
 import models, schemas
 from auth import get_current_user
 from services.auditoria import gerar_diff, registrar_evento_auditoria
 
 router = APIRouter()
+
+
+def _normalizar_cnpj(cnpj: Optional[str]) -> str:
+    return re.sub(r"\D", "", cnpj or "")
+
+
+def _buscar_cliente_por_cnpj_normalizado(
+    db: Session,
+    cnpj: Optional[str],
+    *,
+    excluir_id: Optional[int] = None,
+) -> Optional[models.Cliente]:
+    alvo = _normalizar_cnpj(cnpj)
+    if not alvo:
+        return None
+    for cliente in db.query(models.Cliente).all():
+        if excluir_id is not None and cliente.id == excluir_id:
+            continue
+        if _normalizar_cnpj(cliente.cnpj) == alvo:
+            return cliente
+    return None
 
 
 @router.get("", response_model=List[schemas.ClienteOut], include_in_schema=False)
@@ -16,7 +38,7 @@ def listar_clientes(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_user)
 ):
-    q = db.query(models.Cliente)
+    q = db.query(models.Cliente).filter(models.Cliente.ativo == 1)
     if busca:
         q = q.filter(
             models.Cliente.razao_social.ilike(f"%{busca}%") |
@@ -35,6 +57,12 @@ def criar_cliente(
     if body.cnpj:
         if db.query(models.Cliente).filter(models.Cliente.cnpj == body.cnpj).first():
             raise HTTPException(status_code=400, detail="CNPJ já cadastrado")
+    existente = _buscar_cliente_por_cnpj_normalizado(db, body.cnpj)
+    if existente:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CNPJ já cadastrado em outro cliente (ID {existente.id}).",
+        )
     cliente = models.Cliente(**body.model_dump())
     db.add(cliente)
     db.flush()
@@ -80,6 +108,14 @@ def atualizar_cliente(
     cliente = db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    novo_cnpj = body.model_dump(exclude_unset=True).get("cnpj")
+    if novo_cnpj and _normalizar_cnpj(novo_cnpj) != _normalizar_cnpj(cliente.cnpj):
+        existente = _buscar_cliente_por_cnpj_normalizado(db, novo_cnpj, excluir_id=cliente.id)
+        if existente:
+            raise HTTPException(
+                status_code=400,
+                detail=f"CNPJ já cadastrado em outro cliente (ID {existente.id}).",
+            )
     before = {
         "razao_social": cliente.razao_social,
         "cnpj": cliente.cnpj,
@@ -119,7 +155,27 @@ def deletar_cliente(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
     if cliente.casos:
-        raise HTTPException(status_code=400, detail="Cliente possui casos vinculados e não pode ser excluído")
+        if cliente.ativo != 0:
+            cliente.ativo = 0
+            registrar_evento_auditoria(
+                db,
+                acao="cliente_inativado",
+                modulo="clientes",
+                descricao=(
+                    f"Cliente {cliente.razao_social} inativado porque possui "
+                    f"{len(cliente.casos)} caso(s) vinculado(s)."
+                ),
+                usuario=current_user,
+                entidade="cliente",
+                entidade_id=cliente.id,
+                detalhes={"motivo": "possui_casos_vinculados", "qtd_casos": len(cliente.casos)},
+            )
+            db.commit()
+        return {
+            "message": (
+                "Cliente possui casos vinculados. Cadastro foi inativado e removido da lista de clientes ativos."
+            )
+        }
     registrar_evento_auditoria(
         db,
         acao="cliente_excluido",
