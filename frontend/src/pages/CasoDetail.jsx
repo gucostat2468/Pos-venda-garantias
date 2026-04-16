@@ -93,6 +93,9 @@ const PAPEL_LABEL = {
   gestor_estoque: 'Gestor de Estoque',
   admin: 'Administrador',
 }
+const MAX_UPLOAD_MB = 100
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const OFFICE_UPLOAD_ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp,.xml'
 
 const normalizeText = (value) => String(value || '')
   .normalize('NFD')
@@ -184,6 +187,25 @@ export default function CasoDetail() {
   const autoSignHandledRef = useRef(false)
   const autoFotoScrollHandledKeyRef = useRef('')
 
+  const resolveUploadErrorMessage = useCallback((err) => {
+    const status = err?.response?.status
+    const detail = err?.response?.data?.detail
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail
+    }
+    const rawBody = err?.response?.data
+    if (typeof rawBody === 'string' && rawBody.toLowerCase().includes('request entity too large')) {
+      return `Arquivo excede o limite de upload do servidor (máximo recomendado: ${MAX_UPLOAD_MB}MB).`
+    }
+    if (status === 413) {
+      return `Arquivo excede o limite de upload do servidor (máximo recomendado: ${MAX_UPLOAD_MB}MB).`
+    }
+    if (err?.code === 'ECONNABORTED') {
+      return 'Upload expirou por tempo. Tente novamente com arquivo menor ou conexão mais estável.'
+    }
+    return 'Erro ao fazer upload'
+  }, [])
+
   const fetchCaso = useCallback(async () => {
     try {
       const res = await casosAPI.obter(id)
@@ -239,6 +261,11 @@ export default function CasoDetail() {
 
   const handleUpload = async (tipoDocumento, file) => {
     if (!file) return
+    if (file.size > MAX_UPLOAD_BYTES) {
+      alert(`Arquivo muito grande. Máximo permitido: ${MAX_UPLOAD_MB}MB.`)
+      if (fileRefs.current[tipoDocumento]) fileRefs.current[tipoDocumento].value = ''
+      return
+    }
     setUploading(prev => ({ ...prev, [tipoDocumento]: true }))
     try {
       const formData = new FormData()
@@ -247,7 +274,7 @@ export default function CasoDetail() {
       await casosAPI.uploadDocumento(id, formData)
       await Promise.all([fetchCaso(), fetchCreditoCaso()])
     } catch (err) {
-      alert(err.response?.data?.detail || 'Erro ao fazer upload')
+      alert(resolveUploadErrorMessage(err))
     } finally {
       setUploading(prev => ({ ...prev, [tipoDocumento]: false }))
       if (fileRefs.current[tipoDocumento]) fileRefs.current[tipoDocumento].value = ''
@@ -950,7 +977,7 @@ export default function CasoDetail() {
                         {isUploading ? '...' : doc ? '🔄 Substituir' : '⬆ Enviar'}
                         <input
                           type="file"
-                          accept=".pdf,.jpg,.jpeg,.png,.gif"
+                          accept={OFFICE_UPLOAD_ACCEPT}
                           style={{ display: 'none' }}
                           ref={el => fileRefs.current[uploadTipoDocumento] = el}
                           onChange={e => handleUpload(uploadTipoDocumento, e.target.files[0])}

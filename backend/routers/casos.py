@@ -1323,8 +1323,22 @@ def deletar_caso(
 # ─── Documentos ───────────────────────────────────────────────────────────────
 
 # Apenas formatos compiláveis para impressão do dossiê final.
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"}
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+# NF também pode chegar em XML e é convertida para PDF no compilador.
+ALLOWED_EXTENSIONS_BASE = {".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"}
+ALLOWED_EXTENSIONS_NF_EXTRA = {".xml"}
+DEFAULT_MAX_UPLOAD_MB = 100
+try:
+    MAX_FILE_SIZE_MB = max(1, int(os.getenv("MAX_FILE_SIZE_MB", str(DEFAULT_MAX_UPLOAD_MB))))
+except ValueError:
+    MAX_FILE_SIZE_MB = DEFAULT_MAX_UPLOAD_MB
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
+
+def _extensoes_permitidas_upload(categoria_documento: str) -> set[str]:
+    permitidas = set(ALLOWED_EXTENSIONS_BASE)
+    if categoria_documento in {"categoria_nf_remessa_dronepro", "categoria_nf_remessa_huada"}:
+        permitidas.update(ALLOWED_EXTENSIONS_NF_EXTRA)
+    return permitidas
 
 
 @router.post("/{caso_id}/documentos", response_model=schemas.DocumentoOut)
@@ -1367,12 +1381,26 @@ async def upload_documento(
     status_anterior = caso.status
 
     content = await arquivo.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Arquivo muito grande. Máximo: 50MB")
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Arquivo vazio. Selecione um arquivo válido.")
 
-    ext = Path(arquivo.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Extensão não permitida: {ext}")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Arquivo muito grande. Máximo: {MAX_FILE_SIZE_MB}MB",
+        )
+
+    ext = Path(arquivo.filename or "").suffix.lower()
+    extensoes_permitidas = _extensoes_permitidas_upload(categoria_documento)
+    if ext not in extensoes_permitidas:
+        extensoes_label = ", ".join(sorted(extensoes_permitidas))
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Extensão não permitida: {ext or 'sem extensão'}. "
+                f"Permitidas para este documento: {extensoes_label}"
+            ),
+        )
 
     # Criar diretório do caso
     case_dir = os.path.join(UPLOADS_DIR, str(caso_id))

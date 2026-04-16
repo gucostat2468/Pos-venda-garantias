@@ -14,9 +14,13 @@ from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+TEXT_COMPILABLE_EXTENSIONS = {".xml", ".txt", ".csv", ".json", ".log"}
+MAX_TEXT_DOC_CHARS = 120_000
 
 
 def image_to_pdf_bytes(image_path: str) -> bytes:
@@ -35,6 +39,71 @@ def image_to_pdf_bytes(image_path: str) -> bytes:
 
     buf = io.BytesIO()
     img.save(buf, format="PDF", resolution=150)
+    return buf.getvalue()
+
+
+def _read_text_file(path: str) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            with open(path, "r", encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    with open(path, "rb") as f:
+        raw = f.read()
+    return raw.decode("utf-8", errors="replace")
+
+
+def _chunk_line(text: str, size: int) -> list[str]:
+    if not text:
+        return [""]
+    return [text[i:i + size] for i in range(0, len(text), size)]
+
+
+def text_to_pdf_bytes(text_content: str, nome_arquivo: str) -> bytes:
+    source_text = text_content or ""
+    truncated = False
+    if len(source_text) > MAX_TEXT_DOC_CHARS:
+        source_text = source_text[:MAX_TEXT_DOC_CHARS]
+        truncated = True
+
+    if truncated:
+        source_text += (
+            "\n\n[Conteúdo truncado automaticamente para manter a compilação estável "
+            "do dossiê PDF.]"
+        )
+
+    buf = io.BytesIO()
+    pdf = pdf_canvas.Canvas(buf, pagesize=A4)
+    page_w, page_h = A4
+    margin_x = 36
+    margin_y = 36
+    max_chars = 120
+    line_height = 10
+
+    def new_page(with_header: bool = True) -> float:
+        y_pos = page_h - margin_y
+        if with_header:
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(margin_x, y_pos, f"Anexo textual: {nome_arquivo}")
+            y_pos -= 14
+            pdf.setStrokeColorRGB(0.82, 0.82, 0.82)
+            pdf.line(margin_x, y_pos, page_w - margin_x, y_pos)
+            y_pos -= 10
+        pdf.setFont("Courier", 8)
+        return y_pos
+
+    y = new_page(with_header=True)
+    lines = source_text.splitlines() or ["(arquivo sem conteúdo textual)"]
+    for original_line in lines:
+        for line in _chunk_line(original_line, max_chars):
+            if y <= margin_y:
+                pdf.showPage()
+                y = new_page(with_header=True)
+            pdf.drawString(margin_x, y, line)
+            y -= line_height
+
+    pdf.save()
     return buf.getvalue()
 
 
@@ -281,6 +350,17 @@ def compile_pdf(caso_data: dict, document_paths: List[dict], output_path: str) -
             except Exception as e:
                 raise RuntimeError(
                     f"Falha ao converter imagem '{nome_arquivo}' para PDF: {e}"
+                ) from e
+        elif ext in TEXT_COMPILABLE_EXTENSIONS:
+            try:
+                text_content = _read_text_file(path)
+                text_pdf_bytes = text_to_pdf_bytes(text_content, nome_arquivo)
+                text_reader = PdfReader(io.BytesIO(text_pdf_bytes))
+                for page in text_reader.pages:
+                    writer.add_page(page)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Falha ao converter anexo textual '{nome_arquivo}' para PDF: {e}"
                 ) from e
         else:
             raise RuntimeError(

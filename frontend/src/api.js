@@ -46,8 +46,7 @@ export const casosAPI = {
   atualizar: (id, data) => api.put(`/casos/${id}`, data),
   deletar: (id) => api.delete(`/casos/${id}`),
   uploadDocumento: (id, formData) => api.post(`/casos/${id}/documentos`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
+    timeout: 300000,
   }),
   listarDocumentos: (id) => api.get(`/casos/${id}/documentos`),
   deletarDocumento: (caseId, docId) => api.delete(`/casos/${caseId}/documentos/${docId}`),
