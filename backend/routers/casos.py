@@ -609,6 +609,17 @@ def _resolver_path_documento_ativo_ou_arquivado(
     return doc.path_arquivo or "", False
 
 
+def _resolver_pdf_compilado_ativo_ou_arquivado(
+    caso: models.CasoGarantia,
+) -> tuple[Optional[str], bool]:
+    if caso.link_pdf_compilado and os.path.exists(caso.link_pdf_compilado):
+        return caso.link_pdf_compilado, False
+    dossie_arquivado = resolve_dossie_arquivado(caso.id)
+    if dossie_arquivado and os.path.exists(dossie_arquivado):
+        return dossie_arquivado, True
+    return None, False
+
+
 def _resolver_fonte_pdf_documento(
     caso: models.CasoGarantia,
     doc: models.Documento,
@@ -2230,7 +2241,9 @@ def download_pdf_compilado(
     current_user: models.Usuario = Depends(get_current_user_download)
 ):
     caso = _load_caso(caso_id, db)
-    if caso.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, "Finalizado"}:
+    pdf_path_resolvido, veio_do_arquivo_finalizado = _resolver_pdf_compilado_ativo_ou_arquivado(caso)
+
+    if caso.status in {STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO}:
         _validar_documentos_assinados_por_etapas(
             caso,
             _etapas_requeridas_para_dossie(caso),
@@ -2239,16 +2252,18 @@ def download_pdf_compilado(
         try:
             _compilar_pdf(caso, db)
         except RuntimeError as exc:
-            dossie_arquivado = resolve_dossie_arquivado(caso.id) if caso.status == "Finalizado" else None
-            if not dossie_arquivado or not os.path.exists(dossie_arquivado):
-                raise HTTPException(status_code=500, detail=f"Falha ao gerar dossiê atualizado: {exc}") from exc
+            raise HTTPException(status_code=500, detail=f"Falha ao gerar dossiê atualizado: {exc}") from exc
         caso = _load_caso(caso_id, db)
-
-    pdf_path_resolvido = caso.link_pdf_compilado if caso.link_pdf_compilado and os.path.exists(caso.link_pdf_compilado) else None
-    veio_do_arquivo_finalizado = False
-    if not pdf_path_resolvido:
-        pdf_path_resolvido = resolve_dossie_arquivado(caso.id)
-        veio_do_arquivo_finalizado = bool(pdf_path_resolvido)
+        pdf_path_resolvido, veio_do_arquivo_finalizado = _resolver_pdf_compilado_ativo_ou_arquivado(caso)
+    elif caso.status == "Finalizado" and not pdf_path_resolvido:
+        # Casos finalizados priorizam o dossiê já preservado no histórico.
+        # Recompilar é apenas contingência para cenários legados sem arquivo persistido.
+        try:
+            _compilar_pdf(caso, db)
+            caso = _load_caso(caso_id, db)
+            pdf_path_resolvido, veio_do_arquivo_finalizado = _resolver_pdf_compilado_ativo_ou_arquivado(caso)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=f"Falha ao recuperar dossiê finalizado: {exc}") from exc
 
     if not pdf_path_resolvido or not os.path.exists(pdf_path_resolvido):
         raise HTTPException(status_code=404, detail="PDF compilado não disponível")
