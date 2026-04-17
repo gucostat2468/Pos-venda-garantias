@@ -644,6 +644,15 @@ def _resolver_pdf_compilado_ativo_ou_arquivado(
     active_compiled_path = _resolver_path_compat(caso.link_pdf_compilado, fallback_dir=COMPILED_DIR)
     if active_compiled_path:
         return active_compiled_path, False
+
+    default_compiled_name = f"caso_{caso.id}_dossie.pdf"
+    default_compiled_path = _resolver_path_compat(
+        os.path.join(COMPILED_DIR, default_compiled_name),
+        fallback_dir=COMPILED_DIR,
+    )
+    if default_compiled_path:
+        return default_compiled_path, False
+
     dossie_arquivado = resolve_dossie_arquivado(caso.id)
     if dossie_arquivado and os.path.exists(dossie_arquivado):
         return dossie_arquivado, True

@@ -305,6 +305,25 @@ def _resolve_rel_path(case_id: int, rel_path: Optional[str]) -> Optional[str]:
     return None
 
 
+def _find_latest_file_by_names(base_dir: Path, names: list[str]) -> Optional[str]:
+    if not base_dir.exists():
+        return None
+    for name in names:
+        if not name:
+            continue
+        matches = []
+        for found in base_dir.rglob(name):
+            if found.is_file():
+                try:
+                    matches.append((found.stat().st_mtime, found.resolve()))
+                except OSError:
+                    continue
+        if matches:
+            matches.sort(key=lambda item: item[0], reverse=True)
+            return str(matches[0][1])
+    return None
+
+
 def resolve_documento_arquivado(case_id: int, documento_id: int) -> Optional[str]:
     manifest = _load_latest_manifest(case_id)
     if not manifest:
@@ -327,10 +346,25 @@ def resolve_documento_original_pdf_arquivado(case_id: int, documento_id: int) ->
 
 def resolve_dossie_arquivado(case_id: int) -> Optional[str]:
     manifest = _load_latest_manifest(case_id)
-    if not manifest:
-        return None
-    dossie = manifest.get("dossie") or {}
-    return _resolve_rel_path(case_id, dossie.get("arquivo_arquivado_rel"))
+    if manifest:
+        dossie = manifest.get("dossie") or {}
+        resolved = _resolve_rel_path(case_id, dossie.get("arquivo_arquivado_rel"))
+        if resolved:
+            return resolved
+
+    case_dir = _case_archive_dir(case_id)
+    preferred_names = [f"caso_{int(case_id)}_dossie.pdf", "dossie.pdf"]
+
+    latest_dir = case_dir / "latest"
+    found_latest = _find_latest_file_by_names(latest_dir, preferred_names)
+    if found_latest:
+        return found_latest
+
+    snapshots_dir = case_dir / "snapshots"
+    found_snapshots = _find_latest_file_by_names(snapshots_dir, preferred_names)
+    if found_snapshots:
+        return found_snapshots
+    return None
 
 
 def backfill_archives_for_finalizados(db: Session) -> Dict[str, Any]:
