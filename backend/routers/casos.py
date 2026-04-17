@@ -597,12 +597,41 @@ def _remover_backup_pdf_original(path_arquivo: str) -> None:
             pass
 
 
+def _resolver_path_compat(path_arquivo: Optional[str], fallback_dir: Optional[str] = None) -> Optional[str]:
+    if not path_arquivo:
+        return None
+    raw = str(path_arquivo).strip()
+    if not raw:
+        return None
+
+    candidates: list[str] = []
+
+    def _append_candidate(candidate: Optional[str]) -> None:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    _append_candidate(raw)
+    normalized = raw.replace("\\", os.sep).replace("/", os.sep)
+    _append_candidate(normalized)
+
+    file_name = os.path.basename(normalized)
+    if fallback_dir and file_name:
+        _append_candidate(os.path.join(fallback_dir, file_name))
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
 def _resolver_path_documento_ativo_ou_arquivado(
     caso: models.CasoGarantia,
     doc: models.Documento,
 ) -> tuple[str, bool]:
-    if doc.path_arquivo and os.path.exists(doc.path_arquivo):
-        return doc.path_arquivo, False
+    active_case_dir = os.path.join(UPLOADS_DIR, str(caso.id))
+    active_doc_path = _resolver_path_compat(doc.path_arquivo, fallback_dir=active_case_dir)
+    if active_doc_path:
+        return active_doc_path, False
     archived = resolve_documento_arquivado(caso.id, doc.id)
     if archived and os.path.exists(archived):
         return archived, True
@@ -612,8 +641,9 @@ def _resolver_path_documento_ativo_ou_arquivado(
 def _resolver_pdf_compilado_ativo_ou_arquivado(
     caso: models.CasoGarantia,
 ) -> tuple[Optional[str], bool]:
-    if caso.link_pdf_compilado and os.path.exists(caso.link_pdf_compilado):
-        return caso.link_pdf_compilado, False
+    active_compiled_path = _resolver_path_compat(caso.link_pdf_compilado, fallback_dir=COMPILED_DIR)
+    if active_compiled_path:
+        return active_compiled_path, False
     dossie_arquivado = resolve_dossie_arquivado(caso.id)
     if dossie_arquivado and os.path.exists(dossie_arquivado):
         return dossie_arquivado, True
@@ -625,15 +655,18 @@ def _resolver_fonte_pdf_documento(
     doc: models.Documento,
     path_documento_resolvido: Optional[str] = None,
 ) -> str:
-    if doc.path_arquivo and os.path.exists(doc.path_arquivo):
-        return _obter_fonte_pdf(doc.path_arquivo)
+    active_case_dir = os.path.join(UPLOADS_DIR, str(caso.id))
+    active_doc_path = _resolver_path_compat(doc.path_arquivo, fallback_dir=active_case_dir)
+    if active_doc_path:
+        return _obter_fonte_pdf(active_doc_path)
 
     archived_orig = resolve_documento_original_pdf_arquivado(caso.id, doc.id)
     if archived_orig and os.path.exists(archived_orig):
         return archived_orig
 
-    if path_documento_resolvido and os.path.exists(path_documento_resolvido):
-        return path_documento_resolvido
+    resolved_from_param = _resolver_path_compat(path_documento_resolvido, fallback_dir=active_case_dir)
+    if resolved_from_param:
+        return resolved_from_param
 
     return doc.path_arquivo or path_documento_resolvido or ""
 

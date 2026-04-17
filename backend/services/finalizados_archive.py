@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 from datetime import date, datetime
 from decimal import Decimal
@@ -145,7 +146,7 @@ def archive_caso_finalizado(
         if src.is_file():
             dst = documentos_dir / f"doc_{doc.id}{ext}"
             copied = _copy_file(src, dst)
-            entry["arquivo_arquivado_rel"] = str(dst.relative_to(snapshot_dir))
+            entry["arquivo_arquivado_rel"] = dst.relative_to(snapshot_dir).as_posix()
             entry["arquivo_arquivado_sha256"] = copied["sha256"]
             entry["arquivo_arquivado_tamanho_bytes"] = copied["tamanho_bytes"]
         else:
@@ -155,7 +156,7 @@ def archive_caso_finalizado(
         if src_orig and src_orig.is_file():
             dst_orig = documentos_orig_dir / f"doc_{doc.id}.pdf"
             copied_orig = _copy_file(src_orig, dst_orig)
-            entry["arquivo_original_pdf_rel"] = str(dst_orig.relative_to(snapshot_dir))
+            entry["arquivo_original_pdf_rel"] = dst_orig.relative_to(snapshot_dir).as_posix()
             entry["arquivo_original_pdf_sha256"] = copied_orig["sha256"]
             entry["arquivo_original_pdf_tamanho_bytes"] = copied_orig["tamanho_bytes"]
 
@@ -180,7 +181,7 @@ def archive_caso_finalizado(
         if src_sig.is_file():
             dst_sig = assinaturas_doc_dir / f"docsig_{assinatura_doc.id}{ext}"
             copied_sig = _copy_file(src_sig, dst_sig)
-            entry["arquivo_arquivado_rel"] = str(dst_sig.relative_to(snapshot_dir))
+            entry["arquivo_arquivado_rel"] = dst_sig.relative_to(snapshot_dir).as_posix()
             entry["arquivo_arquivado_sha256"] = copied_sig["sha256"]
             entry["arquivo_arquivado_tamanho_bytes"] = copied_sig["tamanho_bytes"]
         else:
@@ -212,7 +213,7 @@ def archive_caso_finalizado(
     if dossie_path.is_file():
         dossie_dst = dossie_dir / f"caso_{caso.id}_dossie.pdf"
         copied_dossie = _copy_file(dossie_path, dossie_dst)
-        dossie_entry["arquivo_arquivado_rel"] = str(dossie_dst.relative_to(snapshot_dir))
+        dossie_entry["arquivo_arquivado_rel"] = dossie_dst.relative_to(snapshot_dir).as_posix()
         dossie_entry["arquivo_arquivado_sha256"] = copied_dossie["sha256"]
         dossie_entry["arquivo_arquivado_tamanho_bytes"] = copied_dossie["tamanho_bytes"]
     else:
@@ -242,8 +243,8 @@ def archive_caso_finalizado(
 
     latest_meta = {
         "atualizado_em_utc": _utc_iso(),
-        "snapshot_rel": str(snapshot_dir.relative_to(case_dir)),
-        "manifest_rel": str((snapshot_dir / "manifest.json").relative_to(case_dir)),
+        "snapshot_rel": snapshot_dir.relative_to(case_dir).as_posix(),
+        "manifest_rel": (snapshot_dir / "manifest.json").relative_to(case_dir).as_posix(),
     }
     (case_dir / "latest_snapshot.json").write_text(
         json.dumps(latest_meta, ensure_ascii=False, indent=2),
@@ -267,13 +268,40 @@ def _resolve_rel_path(case_id: int, rel_path: Optional[str]) -> Optional[str]:
     if not rel_path:
         return None
     latest_dir = _case_archive_dir(case_id) / "latest"
-    candidate = (latest_dir / rel_path).resolve()
-    try:
-        candidate.relative_to(latest_dir.resolve())
-    except ValueError:
-        return None
-    if candidate.is_file():
-        return str(candidate)
+    latest_resolved = latest_dir.resolve()
+
+    # Compatibilidade entre separadores de path (Windows/Linux) em manifests legados.
+    rel_raw = str(rel_path).strip()
+    normalized = rel_raw.replace("\\", "/")
+    variants = [rel_raw]
+    if normalized != rel_raw:
+        variants.append(normalized)
+
+    for rel_variant in variants:
+        rel_norm = rel_variant.replace("\\", "/")
+        parts = [p for p in rel_norm.split("/") if p and p != "."]
+        if not parts or any(p == ".." for p in parts):
+            continue
+        candidate = (latest_dir.joinpath(*parts)).resolve()
+        try:
+            candidate.relative_to(latest_resolved)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return str(candidate)
+
+    # Fallback: busca pelo nome do arquivo em toda a pasta latest.
+    # Útil quando o manifest legado trouxe separadores/caminhos inválidos.
+    file_name = os.path.basename(normalized)
+    if file_name:
+        for found in latest_dir.rglob(file_name):
+            try:
+                found_resolved = found.resolve()
+                found_resolved.relative_to(latest_resolved)
+            except ValueError:
+                continue
+            if found_resolved.is_file():
+                return str(found_resolved)
     return None
 
 
