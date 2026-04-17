@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+import re
 import unicodedata
 import io
 import mimetypes
@@ -187,10 +188,34 @@ def _arquivo_parece_imagem(
         return False
 
 
+_HEADER_CONTROL_CHARS = {chr(i) for i in range(32)}
+_HEADER_CONTROL_CHARS.add(chr(127))
+
+
+def _sanitize_filename_for_header(filename: Optional[str], default: str = "arquivo") -> str:
+    raw = str(filename or "").replace("\\", "_").replace("/", "_")
+    cleaned = "".join(ch for ch in raw if ch not in _HEADER_CONTROL_CHARS)
+    cleaned = cleaned.strip().strip(".")
+    return cleaned or default
+
+
+def _ascii_filename_fallback(filename: str, default: str = "arquivo") -> str:
+    normalized = unicodedata.normalize("NFKD", filename)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+    ascii_only = ascii_only.replace('"', "")
+    ascii_only = re.sub(r"[^A-Za-z0-9._ -]", "_", ascii_only)
+    ascii_only = re.sub(r"\s+", " ", ascii_only).strip(" .")
+    return (ascii_only or default)[:180]
+
+
 def _content_disposition(filename: str, disposition: str) -> str:
-    safe_name = (filename or "arquivo").replace('"', "")
-    encoded_name = quote(safe_name)
-    return f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{encoded_name}"
+    safe_name_utf8 = _sanitize_filename_for_header(filename)
+    safe_name_ascii = _ascii_filename_fallback(safe_name_utf8)
+    encoded_name = quote(safe_name_utf8, safe="")
+    return (
+        f"{disposition}; filename=\"{safe_name_ascii}\"; "
+        f"filename*=UTF-8''{encoded_name}"
+    )
 
 
 def _check_docs_completos(caso: models.CasoGarantia) -> bool:
