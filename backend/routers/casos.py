@@ -254,29 +254,6 @@ def _etapas_requeridas_para_dossie(caso: models.CasoGarantia) -> List[str]:
     return ["Pos-venda", "Diretoria"]
 
 
-def _unidade_estoque_usuario(usuario: Optional[models.Usuario]) -> str:
-    if not usuario:
-        return "sp"
-    identidade = f"{usuario.nome or ''} {usuario.email or ''}"
-    if "maraba" in _normalizar_texto(identidade):
-        return "maraba"
-    return "sp"
-
-
-def _unidade_estoque_caso(caso: models.CasoGarantia) -> str:
-    tokens = []
-    if caso.criado_por:
-        tokens.extend([caso.criado_por.nome or "", caso.criado_por.email or ""])
-    identidade_origem = " ".join(tokens).strip()
-    if identidade_origem and "maraba" in _normalizar_texto(identidade_origem):
-        return "maraba"
-    return "sp"
-
-
-def _gestor_estoque_pode_assinar_caso(caso: models.CasoGarantia, usuario: models.Usuario) -> bool:
-    return _unidade_estoque_usuario(usuario) == _unidade_estoque_caso(caso)
-
-
 def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.Usuario) -> str:
     if current_user.papel == "gerente_pos_venda":
         if caso.status != STATUS_AGUARDANDO_POS_VENDA:
@@ -297,16 +274,6 @@ def _resolver_etapa_assinatura(caso: models.CasoGarantia, current_user: models.U
             raise HTTPException(
                 status_code=400,
                 detail=f"Caso não está aguardando conferência do estoque. Status atual: {caso.status}"
-            )
-        if not _gestor_estoque_pode_assinar_caso(caso, current_user):
-            unidade_caso = _unidade_estoque_caso(caso)
-            unidade_label = "Marabá" if unidade_caso == "maraba" else "SP"
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    f"Este caso pertence à fila de estoque de {unidade_label}. "
-                    "Somente o gestor responsável por essa unidade pode assinar."
-                ),
             )
         return "Estoque"
     if current_user.papel == "admin":
@@ -496,7 +463,6 @@ def _notificar_gestor_estoque_do_caso(
     titulo: str,
     mensagem: str,
 ) -> None:
-    unidade_caso = _unidade_estoque_caso(caso)
     gestores = (
         db.query(models.Usuario)
         .filter(
@@ -505,10 +471,7 @@ def _notificar_gestor_estoque_do_caso(
         )
         .all()
     )
-    destinatarios = [u for u in gestores if _unidade_estoque_usuario(u) == unidade_caso]
-    if not destinatarios:
-        destinatarios = gestores
-    for usuario in destinatarios:
+    for usuario in gestores:
         _criar_notificacao(
             db=db,
             usuario_id=usuario.id,
