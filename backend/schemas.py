@@ -138,7 +138,7 @@ class AssinaturaOut(BaseModel):
 
 class CasoCreate(BaseModel):
     dji_case_id: Optional[str] = None
-    tipo_processo: str           # Peca | Bateria | Carregador | Controle
+    tipo_processo: str           # Peca | Bateria | Carregador | Controle | DevolucaoNotaFiscal
     cliente_id: int
     produto_nome: Optional[str] = None
     produto_modelo: Optional[str] = None

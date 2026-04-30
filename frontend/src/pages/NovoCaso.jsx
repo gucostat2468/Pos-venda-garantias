@@ -60,6 +60,7 @@ const TIPOS_PROCESSO = [
   { value: 'Bateria', icon: '🔋', label: 'Garantia de Bateria' },
   { value: 'Carregador', icon: '🔌', label: 'Garantia de Carregador' },
   { value: 'Controle', icon: '🎮', label: 'Garantia de Controle' },
+  { value: 'DevolucaoNotaFiscal', icon: '🧾', label: 'Devolução de Nota Fiscal' },
 ]
 
 function formatFileSize(bytes) {
@@ -212,6 +213,12 @@ export default function NovoCaso() {
             <Step number={4} title="Impressão e Finalização (Oficina)" text="Após assinatura da diretoria, a oficina imprime em 3 vias e conclui o caso." />
             <Step number={5} title="Concluído" text="Caso segue para histórico final com rastreabilidade completa." />
           </div>
+          {form.tipo_processo === 'DevolucaoNotaFiscal' && (
+            <div style={s.specialFlowBox}>
+              Fluxo especial: este tipo é destinado somente ao Vanier Afonso e Marcus Lawder.
+              Após as duas assinaturas, o caso é concluído sem passar pelo estoque e segue para solicitação de NF de retorno ao financeiro.
+            </div>
+          )}
         </div>
 
         <div style={s.card}>
@@ -420,6 +427,17 @@ const s = {
   subtitle: { color: 'var(--text-muted)', fontSize: 14 },
   errorBox: { background: '#fee2e2', color: '#991b1b', padding: '12px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 },
   warnBox: { background: '#fff7ed', color: '#9a3412', padding: '12px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14, border: '1px solid #fed7aa' },
+  specialFlowBox: {
+    marginTop: 12,
+    background: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    color: '#1e3a8a',
+    borderRadius: 8,
+    padding: '10px 12px',
+    fontSize: 12,
+    lineHeight: 1.5,
+    fontWeight: 600,
+  },
   card: {
     background: '#fff', borderRadius: 10, padding: '20px 24px',
     boxShadow: 'var(--shadow)', border: '1px solid var(--border)', marginBottom: 16,

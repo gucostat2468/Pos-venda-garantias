@@ -45,6 +45,11 @@ const NOTIFICACAO_META = {
     label: 'Concluído pelo Estoque',
     tone: 'green',
   },
+  pendencia_financeiro_nota_retorno: {
+    icon: '🧾',
+    label: 'Pendente do Financeiro',
+    tone: 'amber',
+  },
   operacao_caso_criado: {
     icon: '🆕',
     label: 'Caso criado',

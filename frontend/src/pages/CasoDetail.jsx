@@ -81,6 +81,7 @@ const DOCS_FLUXO_OFICINA = [
 ]
 const STATUS_AGUARDANDO_ESTOQUE = 'Aguardando Conferência Estoque'
 const STATUS_AGUARDANDO_IMPRESSAO = 'Aguardando Impressão Oficina'
+const TIPO_PROCESSO_DEVOLUCAO_NF = 'DevolucaoNotaFiscal'
 const FLUXO_ESTOQUE_ATIVO = true
 const STATUS_ETAPA_ESTOQUE_COMPAT = FLUXO_ESTOQUE_ATIVO
   ? [STATUS_AGUARDANDO_ESTOQUE, 'Aguardando Vídeo Descarte']
@@ -701,6 +702,7 @@ export default function CasoDetail() {
     return (caso.documentos || []).find((doc) => aliasesNorm.includes(normalizeText(doc.tipo_documento)))
   }
   const usuarioEhGestorEstoque = FLUXO_ESTOQUE_ATIVO && user?.papel === 'gestor_estoque'
+  const isDevolucaoNotaFiscal = caso?.tipo_processo === TIPO_PROCESSO_DEVOLUCAO_NF
   const isFinalOrReprovado = [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
   const isLockedForOfficeEdition = ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado', 'Reprovado'].includes(caso.status)
   const canManageOfficeDocs = (isOperador || isAdmin) && !isLockedForOfficeEdition
@@ -742,28 +744,48 @@ export default function CasoDetail() {
     ? (etapaAssinaturaAtual === 'Pos-venda'
       ? 'Assinar e Encaminhar ao Diretor Comercial'
       : etapaAssinaturaAtual === 'Diretoria'
-        ? 'Assinar e Encaminhar ao Gestor de Estoque'
+        ? (isDevolucaoNotaFiscal ? 'Assinar e Encaminhar ao Financeiro' : 'Assinar e Encaminhar ao Gestor de Estoque')
         : 'Assinar e Concluir Caso')
     : 'Reprovar Caso'
-  const pipelineSteps = [
-    { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
-    {
-      label: 'Gerente Pós-venda',
-      key: 'pos',
-      done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
-    },
-    {
-      label: 'Diretor Comercial',
-      key: 'dir',
-      done: [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
-    },
-    {
-      label: 'Gestor de Estoque',
-      key: 'estoque',
-      done: [STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
-    },
-    { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
-  ]
+  const pipelineSteps = isDevolucaoNotaFiscal
+    ? [
+      { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
+      {
+        label: 'Gerente Pós-venda',
+        key: 'pos',
+        done: ['Aguardando Aprovação Diretoria', 'Finalizado'].includes(caso.status),
+      },
+      {
+        label: 'Diretor Comercial',
+        key: 'dir',
+        done: ['Finalizado'].includes(caso.status),
+      },
+      {
+        label: 'Financeiro (NF Retorno)',
+        key: 'financeiro',
+        done: caso.status === 'Finalizado',
+      },
+      { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
+    ]
+    : [
+      { label: 'Time Oficina', key: 'docs', done: caso.status !== 'Aguardando Documentos' || isFinalOrReprovado },
+      {
+        label: 'Gerente Pós-venda',
+        key: 'pos',
+        done: ['Aguardando Aprovação Diretoria', STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+      },
+      {
+        label: 'Diretor Comercial',
+        key: 'dir',
+        done: [STATUS_AGUARDANDO_ESTOQUE, STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+      },
+      {
+        label: 'Gestor de Estoque',
+        key: 'estoque',
+        done: [STATUS_AGUARDANDO_IMPRESSAO, 'Finalizado'].includes(caso.status),
+      },
+      { label: 'Finalizado', key: 'fin', done: caso.status === 'Finalizado' },
+    ]
 
   return (
     <div style={{ width: '100%', maxWidth: 960 }}>

@@ -65,6 +65,7 @@ export function TipoBadge({ tipo }) {
     Bateria: { color: '#065f46', bg: '#d1fae5', label: '🔋 Bateria' },
     Carregador: { color: '#9a3412', bg: '#ffedd5', label: '🔌 Carregador' },
     Controle: { color: '#5b21b6', bg: '#ede9fe', label: '🎮 Controle' },
+    DevolucaoNotaFiscal: { color: '#0f766e', bg: '#ccfbf1', label: '🧾 Devolução de Nota Fiscal' },
   }
   const config = TIPO_CONFIG[tipo] || { color: '#334155', bg: '#e2e8f0', label: `📦 ${tipo || 'Tipo não informado'}` }
   return (

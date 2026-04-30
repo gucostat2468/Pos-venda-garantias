@@ -218,6 +218,7 @@ const DASH_TIPO_META = {
   Bateria: { css: 'is-bateria', label: 'Bateria' },
   Carregador: { css: 'is-carregador', label: 'Carregador' },
   Controle: { css: 'is-controle', label: 'Controle' },
+  DevolucaoNotaFiscal: { css: 'is-default', label: 'Devolução de Nota Fiscal' },
 }
 
 function formatCaseCode(caso) {

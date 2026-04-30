@@ -13,7 +13,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -73,7 +73,8 @@ STATUS_BLOQUEIA_EDICAO = {
 STATUS_AGUARDANDO_DOCUMENTOS = "Aguardando Documentos"
 STATUS_AGUARDANDO_POS_VENDA = "Aguardando Aprovação Pós-Venda"
 STATUS_AGUARDANDO_DIRETORIA = "Aguardando Aprovação Diretoria"
-TIPOS_PROCESSO_PERMITIDOS = ("Peca", "Bateria", "Carregador", "Controle")
+TIPO_PROCESSO_DEVOLUCAO_NF = "DevolucaoNotaFiscal"
+TIPOS_PROCESSO_PERMITIDOS = ("Peca", "Bateria", "Carregador", "Controle", TIPO_PROCESSO_DEVOLUCAO_NF)
 
 STATUS_FLOW = {
     "Aguardando Documentos": 0,
@@ -388,6 +389,10 @@ def _codigo_caso(caso: models.CasoGarantia) -> str:
     return caso.dji_case_id or f"Caso #{caso.id}"
 
 
+def _is_processo_devolucao_nota(caso: Optional[models.CasoGarantia]) -> bool:
+    return bool(caso and caso.tipo_processo == TIPO_PROCESSO_DEVOLUCAO_NF)
+
+
 def _validar_tipo_processo(tipo_processo: Optional[str]) -> None:
     if not tipo_processo:
         return
@@ -480,6 +485,47 @@ def _notificar_gestor_estoque_do_caso(
             mensagem=mensagem,
             case_id=caso.id,
         )
+
+
+def _notificar_financeiro_retorno_nota(
+    db: Session,
+    caso: models.CasoGarantia,
+    mensagem: str,
+) -> None:
+    tipo = "pendencia_financeiro_nota_retorno"
+    titulo = "Solicitação de NF de retorno"
+    usuarios_financeiro = (
+        db.query(models.Usuario)
+        .filter(
+            models.Usuario.ativo == 1,
+            or_(
+                func.lower(models.Usuario.email).like("%financeiro%"),
+                func.lower(models.Usuario.nome).like("%financeiro%"),
+            ),
+        )
+        .all()
+    )
+    if usuarios_financeiro:
+        for usuario in usuarios_financeiro:
+            _criar_notificacao(
+                db=db,
+                usuario_id=usuario.id,
+                tipo=tipo,
+                titulo=titulo,
+                mensagem=mensagem,
+                case_id=caso.id,
+            )
+        return
+
+    # Fallback: caso não exista usuário do financeiro cadastrado, notifica admins.
+    _notificar_papel(
+        db=db,
+        papel="admin",
+        tipo=tipo,
+        titulo=titulo,
+        mensagem=mensagem,
+        case_id=caso.id,
+    )
 
 
 def _notificar_operacao_todos(
@@ -2084,18 +2130,30 @@ def assinar_caso(
             ["Pos-venda", "Diretoria"],
             "aprovação final da diretoria",
         )
-        caso_db.status = STATUS_AGUARDANDO_ESTOQUE
-        caso_db.status_rebate = "Aguardando Apuração"
-        _notificar_gestor_estoque_do_caso(
-            db=db,
-            caso=caso,
-            tipo="pendencia_assinatura_estoque",
-            titulo="Assinatura pendente: Gestor de Estoque",
-            mensagem=(
-                f"{codigo} recebeu as assinaturas de Pós-venda e Diretoria Comercial. "
-                "Aguardando conferência do estoque, anexo da foto e assinatura final."
-            ),
-        )
+        if _is_processo_devolucao_nota(caso):
+            caso_db.status = "Finalizado"
+            caso_db.status_rebate = "Não Aplicável"
+            _notificar_financeiro_retorno_nota(
+                db=db,
+                caso=caso,
+                mensagem=(
+                    f"{codigo} (Devolução de Nota Fiscal) foi assinado por Pós-venda e Diretoria. "
+                    "Solicitar emissão da nota fiscal de retorno."
+                ),
+            )
+        else:
+            caso_db.status = STATUS_AGUARDANDO_ESTOQUE
+            caso_db.status_rebate = "Aguardando Apuração"
+            _notificar_gestor_estoque_do_caso(
+                db=db,
+                caso=caso,
+                tipo="pendencia_assinatura_estoque",
+                titulo="Assinatura pendente: Gestor de Estoque",
+                mensagem=(
+                    f"{codigo} recebeu as assinaturas de Pós-venda e Diretoria Comercial. "
+                    "Aguardando conferência do estoque, anexo da foto e assinatura final."
+                ),
+            )
     elif etapa == "Estoque":
         if body.status_decisao == "Aprovado" and not _check_foto_pedido_estoque(caso):
             raise HTTPException(

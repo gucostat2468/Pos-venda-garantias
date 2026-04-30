@@ -419,6 +419,7 @@ export default function CasosList() {
             <option value="Bateria">🔋 Bateria</option>
             <option value="Carregador">🔌 Carregador</option>
             <option value="Controle">🎮 Controle</option>
+            <option value="DevolucaoNotaFiscal">🧾 Devolução de Nota Fiscal</option>
           </select>
           <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} style={s.select}>
             <option value="">Todos os clientes</option>

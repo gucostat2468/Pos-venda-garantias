@@ -168,6 +168,7 @@ def generate_cover_page(caso_data: dict) -> bytes:
         "Bateria": "Garantia de Baterias",
         "Carregador": "Garantia de Carregador",
         "Controle": "Garantia de Controle",
+        "DevolucaoNotaFiscal": "Devolução de Nota Fiscal",
     }.get(tipo_processo, tipo_processo or "—")
 
     data_table = [
